@@ -2,6 +2,8 @@ package com.romuel.pianosolfege.pdf
 
 import android.content.Context
 import com.romuel.pianosolfege.music.TimedNote
+import com.romuel.pianosolfege.music.ScoreMeter
+import com.romuel.pianosolfege.music.RhythmIssue
 import com.romuel.pianosolfege.music.MusicXmlImporter
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -41,10 +43,15 @@ class PdfNoteReader(private val context: Context) {
         val confidence: Float = 0f,
         val warnings: List<String> = emptyList(),
         val timedNotes: List<TimedNote> = emptyList(),
+        val meter: ScoreMeter = ScoreMeter(4, 4),
+        val meterDetected: Boolean = false,
+        val measures: Int = 0,
+        val rhythmIssues: List<RhythmIssue> = emptyList(),
     )
 
     suspend fun read(
         uri: Uri,
+        selectedMeter: ScoreMeter = ScoreMeter(4, 4),
         onProgress: (page: Int, total: Int) -> Unit = { _, _ -> },
     ): Result = withContext(Dispatchers.IO) {
         val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
@@ -64,6 +71,10 @@ class PdfNoteReader(private val context: Context) {
                 var omrStaffs = 0
                 var omrConfidenceWeighted = 0f
                 val omrTimed = mutableListOf<TimedNote>()
+                val issues = mutableListOf<RhythmIssue>()
+                var pagesWithRhythm = 0
+                var totalMeasures = 0
+                var detectedMeter: ScoreMeter? = null
                 var pageStartBeats = 0.0
                 val pagesToRead = min(total, MAX_PAGES)
 
@@ -81,6 +92,8 @@ class PdfNoteReader(private val context: Context) {
                             // OCR text remains useful for PDFs that literally contain
                             // Do/Ré/Mi or C/D/E note names and for tempo annotations.
                             val text = recognize(recognizer, bitmap)
+                            val meterOnPage = SolfegeOcrNormalizer.detectMeter(text)
+                            if (meterOnPage != null) detectedMeter = meterOnPage
                             if (text.isNotBlank()) {
                                 if (raw.isNotEmpty()) raw.append('\n')
                                 raw.append(text)
@@ -88,7 +101,7 @@ class PdfNoteReader(private val context: Context) {
 
                             // In parallel, inspect the rendered score itself. If real
                             // five-line staves are found, this result takes priority.
-                            val omr = SheetMusicOmr.analyze(bitmap)
+                            val omr = SheetMusicOmr.analyze(bitmap, detectedMeter ?: selectedMeter)
                             if (omr.playableText.isNotBlank()) {
                                 if (omrPlayable.isNotEmpty()) omrPlayable.append(' ')
                                 omrPlayable.append(omr.playableText)
@@ -101,6 +114,9 @@ class PdfNoteReader(private val context: Context) {
                                     it.startBeats + it.durationBeats
                                 }
                             }
+                            issues += omr.rhythmIssues
+                            totalMeasures += omr.measures
+                            if (omr.measures > 0) pagesWithRhythm++
                             omrNotes += omr.detectedNotes
                             omrEvents += omr.detectedEvents
                             omrStaffs += omr.detectedStaffs
@@ -134,6 +150,10 @@ class PdfNoteReader(private val context: Context) {
                         confidence = omrConfidence,
                         warnings = omrWarnings.toList(),
                         timedNotes = omrTimed,
+                        meter = detectedMeter ?: selectedMeter,
+                        meterDetected = detectedMeter != null,
+                        measures = totalMeasures,
+                        rhythmIssues = issues,
                     )
 
                     useText -> Result(
@@ -144,6 +164,8 @@ class PdfNoteReader(private val context: Context) {
                         pageCount = pagesToRead,
                         detectedBpm = textResult.bpm,
                         mode = RecognitionMode.SOLFEGE_TEXT,
+                        meter = detectedMeter ?: selectedMeter,
+                        meterDetected = detectedMeter != null,
                     )
 
                     else -> Result(
@@ -157,6 +179,10 @@ class PdfNoteReader(private val context: Context) {
                         detectedStaffs = omrStaffs,
                         confidence = omrConfidence,
                         warnings = omrWarnings.toList(),
+                        meter = detectedMeter ?: selectedMeter,
+                        meterDetected = detectedMeter != null,
+                        measures = totalMeasures,
+                        rhythmIssues = issues,
                     )
                 }
             }
@@ -203,6 +229,16 @@ class PdfNoteReader(private val context: Context) {
             val detectedNotes: Int,
             val bpm: Int?,
         )
+
+        private val meterRegex = Regex("(?m)(?:^|\\s)([2-9]|1[0-2])\\s*[/⁄]\\s*(2|4|8|16)(?:\\s|$)")
+        private val stackedMeterRegex = Regex("(?m)^\\s*([2-9])\\s*\\n\\s*(2|4|8|16)\\s*$")
+
+        fun detectMeter(text: String): ScoreMeter? {
+            val match = meterRegex.find(text) ?: stackedMeterRegex.find(text)
+            val numerator = match?.groupValues?.getOrNull(1)?.toIntOrNull() ?: return null
+            val denominator = match.groupValues.getOrNull(2)?.toIntOrNull() ?: return null
+            return runCatching { ScoreMeter(numerator, denominator) }.getOrNull()
+        }
 
         private val noteRegex = Regex(
             pattern = "(?i)(?<![\\p{L}\\p{N}])(do|ré|re|mi|fa|sol|la|si|c|d|e|f|g|a|b)\\s*([#♯b♭])?\\s*([0-8])?(?:\\s*[:=]\\s*([0-9]+(?:[.,][0-9]+)?))?(?![\\p{L}])"
