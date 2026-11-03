@@ -196,6 +196,7 @@ class PdfNoteReader(private val context: Context) {
         )
         private val bpmRegex = Regex("(?i)(?:tempo\\s*[:=]?\\s*)?(\\d{2,3})\\s*bpm")
         private val tempoRegex = Regex("(?i)tempo\\s*[:=]\\s*(\\d{2,3})")
+        private val metronomeRegex = Regex("(?im)^\\s*(?:q|j|♩|♪|♬)\\s*=\\s*(\\d{2,3})\\s*$")
 
         private val canonical = mapOf(
             "do" to "Do", "re" to "Ré", "mi" to "Mi", "fa" to "Fa",
@@ -239,7 +240,8 @@ class PdfNoteReader(private val context: Context) {
             }
 
             val bpm = (bpmRegex.find(text)?.groupValues?.getOrNull(1)
-                ?: tempoRegex.find(text)?.groupValues?.getOrNull(1))
+                ?: tempoRegex.find(text)?.groupValues?.getOrNull(1)
+                ?: metronomeRegex.find(text)?.groupValues?.getOrNull(1))
                 ?.toIntOrNull()
                 ?.coerceIn(40, 220)
 
