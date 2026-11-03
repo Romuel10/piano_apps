@@ -112,7 +112,7 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                "PIANO • STUDIO",
+                "PIANO PARTITION+",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = accent,
@@ -124,7 +124,7 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                 color = inkColor,
             )
             Text(
-                "Importez une partition, vérifiez les notes reconnues et écoutez les deux mains.",
+                "Importez une partition, corrigez les notes détectées et écoutez les deux mains synchronisées.",
                 style = MaterialTheme.typography.bodyMedium,
             )
 
@@ -362,6 +362,28 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                 vm.audioStatus + "\nPDF : OMR expérimental, altérations et polyrythmies visuelles complexes non garanties. MusicXML/MXL préférable pour une fidélité élevée.",
                 style = MaterialTheme.typography.bodySmall,
             )
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Mises à jour", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Installez une nouvelle APK de distribution signée par-dessus la précédente sans effacer vos morceaux. Les APK debug des anciens tests peuvent nécessiter une transition unique.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(onClick = {
+                        context.startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://github.com/Romuel10/piano_apps/actions/workflows/android.yml"),
+                            ),
+                        )
+                    }) {
+                        Text("Consulter les nouvelles versions")
+                    }
+                }
+            }
             Spacer(Modifier.height(8.dp))
         }
     }
