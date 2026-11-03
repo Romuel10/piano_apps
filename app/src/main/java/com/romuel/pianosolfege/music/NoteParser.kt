@@ -5,7 +5,10 @@ import java.util.Locale
 
 object NoteParser {
     private val notePattern = Regex("^(do|re|mi|fa|sol|la|si)(#|b)?([0-8])(?::([0-9]+(?:\\.[0-9]+)?))?$")
+    private val bareNotePattern = Regex("^(do|re|mi|fa|sol|la|si)(#|b)?([0-8])$")
     private val restPattern = Regex("^(pause|silence|r)(?::([0-9]+(?:\\.[0-9]+)?))?$")
+    private val chordPattern = Regex("^\\[(.+)](?::([0-9]+(?:\\.[0-9]+)?))?$")
+    private val tokenPattern = Regex("\\[[^]]+](?::[0-9]+(?:\\.[0-9]+)?)?|[^\\s,;]+")
 
     private val semitones = mapOf(
         "do" to 0,
@@ -17,12 +20,16 @@ object NoteParser {
         "si" to 11,
     )
 
+    private val displayNames = arrayOf(
+        "Do", "Do#", "Ré", "Ré#", "Mi", "Fa",
+        "Fa#", "Sol", "Sol#", "La", "La#", "Si",
+    )
+
     fun parse(input: String): ParseResult {
-        val tokens = input
-            .replace(',', ' ')
-            .replace(';', ' ')
-            .split(Regex("\\s+"))
+        val tokens = tokenPattern.findAll(input)
+            .map { it.value.trim() }
             .filter { it.isNotBlank() }
+            .toList()
 
         if (tokens.isEmpty()) {
             return ParseResult(emptyList(), listOf("Entre au moins une note, par exemple : Do4 Ré4 Mi4"))
@@ -32,49 +39,99 @@ object NoteParser {
         val errors = mutableListOf<String>()
 
         tokens.forEachIndexed { index, original ->
-            val token = normalize(original)
+            val normalized = normalize(original)
 
-            val rest = restPattern.matchEntire(token)
+            val rest = restPattern.matchEntire(normalized)
             if (rest != null) {
                 val beats = rest.groupValues[2].toFloatOrNull() ?: 1f
                 if (beats <= 0f) {
                     errors += "Élément ${index + 1} ($original) : la durée doit être positive."
                 } else {
-                    notes += PianoNote(label = "Pause", midi = null, beats = beats)
+                    notes += PianoNote(label = "Pause", midis = emptyList(), beats = beats)
                 }
                 return@forEachIndexed
             }
 
-            val match = notePattern.matchEntire(token)
-            if (match == null) {
-                errors += "Élément ${index + 1} ($original) invalide. Exemple accepté : Do4, Fa#4, Sib3, Ré4:0.5."
+            val chord = chordPattern.matchEntire(normalized)
+            if (chord != null) {
+                val chordParts = chord.groupValues[1]
+                    .split(Regex("[\\s,]+"))
+                    .filter { it.isNotBlank() }
+                val beats = chord.groupValues[2].toFloatOrNull() ?: 1f
+
+                if (beats <= 0f) {
+                    errors += "Élément ${index + 1} ($original) : la durée doit être positive."
+                    return@forEachIndexed
+                }
+                if (chordParts.size < 2) {
+                    errors += "Élément ${index + 1} ($original) : un accord doit contenir au moins deux notes."
+                    return@forEachIndexed
+                }
+
+                val chordMidis = mutableListOf<Int>()
+                chordParts.forEach { part ->
+                    val midi = parseBareMidi(part)
+                    if (midi == null) {
+                        errors += "Élément ${index + 1} ($original) : note d'accord invalide « $part ». Exemple : [Do4 Mi4 Sol4]:2."
+                    } else if (midi !in 21..108) {
+                        errors += "Élément ${index + 1} ($original) : $part est hors de la plage A0–C8."
+                    } else {
+                        chordMidis += midi
+                    }
+                }
+
+                if (chordMidis.size == chordParts.size) {
+                    notes += PianoNote(
+                        label = chordMidis.joinToString(prefix = "[", postfix = "]") { labelForMidi(it) },
+                        midis = chordMidis.distinct(),
+                        beats = beats,
+                    )
+                }
                 return@forEachIndexed
             }
 
-            val name = match.groupValues[1]
-            val accidental = match.groupValues[2]
-            val octave = match.groupValues[3].toInt()
+            val match = notePattern.matchEntire(normalized)
+            if (match == null) {
+                errors += "Élément ${index + 1} ($original) invalide. Exemples : Do4, Fa#4, Sib3, Ré4:0.5, [Do4 Mi4 Sol4]:2."
+                return@forEachIndexed
+            }
+
+            val midi = midiFromMatch(match)
             val beats = match.groupValues[4].toFloatOrNull() ?: 1f
 
             if (beats <= 0f) {
                 errors += "Élément ${index + 1} ($original) : la durée doit être positive."
-                return@forEachIndexed
-            }
-
-            var semitone = semitones.getValue(name)
-            if (accidental == "#") semitone += 1
-            if (accidental == "b") semitone -= 1
-
-            val midi = (octave + 1) * 12 + semitone
-            if (midi !in 21..108) {
+            } else if (midi !in 21..108) {
                 errors += "Élément ${index + 1} ($original) : utilise une note comprise entre A0 et C8."
-                return@forEachIndexed
+            } else {
+                notes += PianoNote(label = labelForMidi(midi), midis = listOf(midi), beats = beats)
             }
-
-            notes += PianoNote(label = original, midi = midi, beats = beats)
         }
 
         return ParseResult(notes, errors)
+    }
+
+    fun labelForMidi(midi: Int): String {
+        val safeMidi = midi.coerceIn(0, 127)
+        val octave = safeMidi / 12 - 1
+        return "${displayNames[safeMidi % 12]}$octave"
+    }
+
+    private fun parseBareMidi(value: String): Int? {
+        val match = bareNotePattern.matchEntire(normalize(value)) ?: return null
+        return midiFromMatch(match)
+    }
+
+    private fun midiFromMatch(match: MatchResult): Int {
+        val name = match.groupValues[1]
+        val accidental = match.groupValues[2]
+        val octave = match.groupValues[3].toInt()
+
+        var semitone = semitones.getValue(name)
+        if (accidental == "#") semitone += 1
+        if (accidental == "b") semitone -= 1
+
+        return (octave + 1) * 12 + semitone
     }
 
     private fun normalize(value: String): String {
