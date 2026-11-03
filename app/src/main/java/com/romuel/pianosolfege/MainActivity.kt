@@ -244,7 +244,7 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                             vm.input.isBlank() -> "Ajoutez une note pour commencer."
                             validation.errors.isEmpty() ->
                                 "${validation.notes.size} élément(s) valides • prêt à jouer"
-                            else -> "À corriger : ${validation.errors.first()}",
+                            else -> "À corriger : ${validation.errors.first()}"
                         },
                         color = if (validation.errors.isEmpty()) accent
                             else MaterialTheme.colorScheme.error,
