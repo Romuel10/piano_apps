@@ -19,12 +19,15 @@ import kotlin.math.roundToInt
 /** Notes with independent start/duration: unlike a linear solfège string, voices overlap. */
 data class TimedNote(val midi: Int, val startBeats: Double, val durationBeats: Double)
 
+data class TempoChange(val startBeats: Double, val bpm: Int)
+
 data class ImportedScore(
     val notes: List<TimedNote>,
     val bpm: Int,
     val title: String,
     val editablePreview: String,
     val warnings: List<String>,
+    val tempoChanges: List<TempoChange> = listOf(TempoChange(0.0, bpm)),
 )
 
 /**
@@ -75,13 +78,14 @@ object MusicXmlImporter {
         require(parts.isNotEmpty()) { "Aucune partie musicale n'a été trouvée." }
 
         val raw = mutableListOf<RawNote>()
+        val rawTempos = mutableListOf<TempoChange>()
         val warnings = linkedSetOf<String>()
-        var bpm = 100
 
         parts.forEachIndexed { partIndex, part ->
             var measureStart = 0.0
             var divisions = 1.0
             var expectedMeasureBeats = 4.0
+            var keyAlterations = emptyMap<String, Int>()
             val ties = mutableMapOf<String, RawNote>()
 
             part.children("measure").forEachIndexed { measureIndex, measure ->
@@ -94,6 +98,8 @@ object MusicXmlImporter {
                         "attributes" -> {
                             element.childText("divisions")?.toDoubleOrNull()?.takeIf { it > 0 }
                                 ?.let { divisions = it }
+                            element.child("key")?.childText("fifths")?.toIntOrNull()
+                                ?.let { keyAlterations = keySignatureFor(it) }
                             element.child("time")?.let { time ->
                                 val beats = time.childText("beats")?.toDoubleOrNull()
                                 val beatType = time.childText("beat-type")?.toDoubleOrNull()
@@ -103,12 +109,14 @@ object MusicXmlImporter {
                             }
                         }
                         "direction" -> {
-                            val fromSound = element.child("sound")?.getAttribute("tempo")
-                                ?.toDoubleOrNull()
-                            val fromMetronome = element.child("direction-type")
-                                ?.child("metronome")?.childText("per-minute")?.toDoubleOrNull()
-                            (fromSound ?: fromMetronome)?.takeIf { it in 30.0..300.0 }?.let {
-                                bpm = it.roundToInt().coerceIn(40, 220)
+                            val tempo = tempoFromDirection(element)
+                            if (tempo != null && tempo in 30.0..300.0) {
+                                val offsetBeats =
+                                    (element.childText("offset")?.toDoubleOrNull() ?: 0.0) / divisions
+                                rawTempos += TempoChange(
+                                    startBeats = (measureStart + cursor + offsetBeats).coerceAtLeast(0.0),
+                                    bpm = tempo.roundToInt().coerceIn(40, 220),
+                                )
                             }
                         }
                         "backup" -> {
@@ -136,7 +144,7 @@ object MusicXmlImporter {
 
                             if (element.child("rest") == null) {
                                 val pitch = element.child("pitch")
-                                val midi = pitch?.let(::pitchMidi)
+                                val midi = pitch?.let { pitchMidi(it, keyAlterations) }
                                 if (midi != null && midi in 21..108) {
                                     val voice = element.childText("voice") ?: "1"
                                     val key = "$partIndex:$voice:$midi"
@@ -169,6 +177,16 @@ object MusicXmlImporter {
             }
         }
 
+        val tempoChanges = rawTempos
+            .groupBy { (it.startBeats * 1000.0).roundToInt() }
+            .toSortedMap()
+            .map { (tick, events) -> TempoChange(tick / 1000.0, events.last().bpm) }
+            .toMutableList()
+        if (tempoChanges.firstOrNull()?.startBeats != 0.0) {
+            tempoChanges.add(0, TempoChange(0.0, DEFAULT_BPM))
+        }
+        val bpm = tempoChanges.firstOrNull()?.bpm ?: DEFAULT_BPM
+
         val notes = raw.map { TimedNote(it.midi, it.start, it.duration) }
             .filter { it.durationBeats > 0 && it.startBeats >= 0 }
             .sortedWith(compareBy<TimedNote> { it.startBeats }.thenBy { it.midi })
@@ -180,17 +198,49 @@ object MusicXmlImporter {
             title = title,
             editablePreview = preview(notes),
             warnings = warnings.toList(),
+            tempoChanges = tempoChanges,
         )
     }
 
-    private fun pitchMidi(pitch: Element): Int? {
-        val index = when (pitch.childText("step")?.uppercase()) {
+    private fun pitchMidi(pitch: Element, keyAlterations: Map<String, Int>): Int? {
+        val step = pitch.childText("step")?.uppercase() ?: return null
+        val index = when (step) {
             "C" -> 0; "D" -> 2; "E" -> 4; "F" -> 5
             "G" -> 7; "A" -> 9; "B" -> 11; else -> return null
         }
         val octave = pitch.childText("octave")?.toIntOrNull() ?: return null
-        val alter = pitch.childText("alter")?.toDoubleOrNull()?.roundToInt() ?: 0
+        val alter = pitch.childText("alter")?.toDoubleOrNull()?.roundToInt()
+            ?: keyAlterations[step]
+            ?: 0
         return (octave + 1) * 12 + index + alter
+    }
+
+    private fun keySignatureFor(fifths: Int): Map<String, Int> {
+        val count = fifths.coerceIn(-7, 7)
+        val order = if (count >= 0) {
+            listOf("F", "C", "G", "D", "A", "E", "B")
+        } else {
+            listOf("B", "E", "A", "D", "G", "C", "F")
+        }
+        val alteration = if (count >= 0) 1 else -1
+        return order.take(kotlin.math.abs(count)).associateWith { alteration }
+    }
+
+    private fun tempoFromDirection(direction: Element): Double? {
+        direction.child("sound")?.getAttribute("tempo")?.toDoubleOrNull()?.let { return it }
+        val metronome = direction.child("direction-type")?.child("metronome") ?: return null
+        val perMinute = metronome.childText("per-minute")?.toDoubleOrNull() ?: return null
+        var quarterBeats = when (metronome.childText("beat-unit")?.lowercase()) {
+            "maxima" -> 32.0; "long" -> 16.0; "breve" -> 8.0; "whole" -> 4.0
+            "half" -> 2.0; "quarter" -> 1.0; "eighth" -> 0.5; "16th" -> 0.25
+            "32nd" -> 0.125; "64th" -> 0.0625; else -> 1.0
+        }
+        var dotValue = quarterBeats / 2.0
+        repeat(metronome.children("beat-unit-dot").size) {
+            quarterBeats += dotValue
+            dotValue /= 2.0
+        }
+        return perMinute * quarterBeats
     }
 
     private fun lengthFromType(note: Element): Double {
@@ -248,12 +298,21 @@ object MusicXmlImporter {
         ZipInputStream(ByteArrayInputStream(compressed)).use { zip ->
             var entry = zip.nextEntry
             var count = 0
-            while (entry != null && count++ < 100) {
+            var totalUncompressedBytes = 0
+            while (entry != null) {
+                require(count++ < MAX_MXL_ENTRIES) { "Archive MXL avec trop d'entrées." }
                 val name = entry.name.replace('\\', '/')
-                if (!entry.isDirectory && !name.startsWith("META-INF/", ignoreCase = true) &&
-                    (name.endsWith(".musicxml", true) || name.endsWith(".xml", true))) {
-                    candidates += name to readLimited(zip, MAX_XML_BYTES)
-                }
+                val isCandidate = !entry.isDirectory &&
+                    !name.startsWith("META-INF/", ignoreCase = true) &&
+                    (name.endsWith(".musicxml", true) || name.endsWith(".xml", true))
+                val remaining = MAX_MXL_UNCOMPRESSED_BYTES - totalUncompressedBytes
+                val read = readEntryLimited(
+                    zip,
+                    maxBytes = if (isCandidate) minOf(MAX_XML_BYTES, remaining) else remaining,
+                    retain = isCandidate,
+                )
+                totalUncompressedBytes += read.byteCount
+                if (isCandidate) candidates += name to read.bytes
                 zip.closeEntry()
                 entry = zip.nextEntry
             }
@@ -261,6 +320,24 @@ object MusicXmlImporter {
         return candidates.firstOrNull { it.first.endsWith(".musicxml", true) }?.second
             ?: candidates.firstOrNull()?.second
             ?: error("Archive MXL sans partition MusicXML.")
+    }
+
+    private data class LimitedEntry(val bytes: ByteArray, val byteCount: Int)
+
+    private fun readEntryLimited(input: InputStream, maxBytes: Int, retain: Boolean): LimitedEntry {
+        val output = if (retain) ByteArrayOutputStream() else null
+        val buffer = ByteArray(8192)
+        var byteCount = 0
+        while (true) {
+            val size = input.read(buffer)
+            if (size < 0) break
+            require(byteCount + size <= maxBytes) {
+                "Archive MXL trop grande (limite décompressée de 24 Mo)."
+            }
+            byteCount += size
+            output?.write(buffer, 0, size)
+        }
+        return LimitedEntry(output?.toByteArray() ?: ByteArray(0), byteCount)
     }
 
     private fun readLimited(input: InputStream, maxBytes: Int): ByteArray {
@@ -294,5 +371,8 @@ object MusicXmlImporter {
     private fun Element.childText(tag: String): String? =
         child(tag)?.textContent?.trim()?.takeIf { it.isNotEmpty() }
 
+    private const val DEFAULT_BPM = 100
     private const val MAX_XML_BYTES = 12 * 1024 * 1024
+    private const val MAX_MXL_UNCOMPRESSED_BYTES = 24 * 1024 * 1024
+    private const val MAX_MXL_ENTRIES = 100
 }
