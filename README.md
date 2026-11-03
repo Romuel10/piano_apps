@@ -1,25 +1,38 @@
 # Piano Solfège Android
 
-Application Android en **Kotlin + Jetpack Compose** qui lit une suite de notes de solfège saisie par l'utilisateur.
+Application Android en **Kotlin + Jetpack Compose** qui joue des mélodies et des accords écrits en solfège français.
 
-## Fonctionnalités du MVP
+## Fonctionnalités
 
-- Saisie de notes : `Do Ré Mi Fa Sol La Si`
-- Octaves : `Do4`, `Ré5`, etc. (plage piano A0–C8)
+- Notes : `Do Ré Mi Fa Sol La Si`
+- Octaves sur la plage piano A0–C8
 - Dièses et bémols : `Fa#4`, `Sib4`
-- Durées en temps : `Do4:0.5`, `Ré4:1`, `Mi4:2`
+- Durées : `Do4:0.5`, `Ré4:1`, `Mi4:2`
 - Silences : `Pause:1`
+- Accords : `[Do4 Mi4 Sol4]:2`
 - Tempo configurable de 40 à 220 BPM
-- Lecture / Stop
-- Affichage de la note en cours
-- Fonctionnement hors ligne
-- Génération audio locale : aucune banque de sons n'est nécessaire pour ce MVP
+- Lecture, pause/reprise et stop
+- Clavier visuel interactif sur une octave
+- Mise en évidence des touches jouées
+- Sauvegarde locale et rechargement des morceaux
+- Vrais échantillons de piano mis en cache sur l'appareil
+- Synthétiseur intégré de secours si les samples ne sont pas encore disponibles
 
 ## Exemple
 
 ```text
-Do4:1 Ré4:1 Mi4:1 Fa4:1 Sol4:2 Pause:0.5 Sol4:1 Do5:2
+Do4:1 Ré4:1 Mi4:1 Fa4:1
+[Do4 Mi4 Sol4]:2 Pause:0.5
+[Fa4 La4 Do5]:2 [Sol4 Si4 Ré5]:2
 ```
+
+## Audio
+
+L'application télécharge au premier lancement un petit ensemble d'échantillons du **Salamander Grand Piano V3** puis les conserve dans le stockage interne de l'application. Les notes intermédiaires sont obtenues par transposition des échantillons les plus proches.
+
+Si le téléchargement n'est pas possible, le moteur `AudioTrack` intégré prend automatiquement le relais avec une synthèse locale. Une fois les échantillons mis en cache, le piano réel peut être utilisé sans nouveau téléchargement.
+
+Les enregistrements Salamander Grand Piano V3 sont de **Alexander Holm**, sous licence **Creative Commons Attribution 3.0 (CC BY 3.0)**. Voir `NOTICE.md`.
 
 ## Architecture
 
@@ -27,29 +40,40 @@ Do4:1 Ré4:1 Mi4:1 Fa4:1 Sol4:2 Pause:0.5 Sol4:1 Do5:2
 UI Jetpack Compose
       ↓
 PianoViewModel
+      ├── SongRepository (SharedPreferences)
       ↓
 NoteParser
       ↓
-PianoEngine (AudioTrack)
+PianoEngine
+      ├── SoundPool + samples Salamander
+      └── AudioTrack (secours synthétique)
 ```
-
-Le `NoteParser` transforme les notes françaises en numéros MIDI. `PianoEngine` convertit ensuite les numéros MIDI en fréquences et synthétise un timbre de piano simple avec plusieurs harmoniques.
 
 ## Ouvrir le projet
 
 1. Cloner ce dépôt.
 2. Ouvrir le dossier dans Android Studio.
 3. Laisser Android Studio synchroniser Gradle.
-4. Lancer l'application sur un appareil ou un émulateur Android API 26+.
+4. Lancer l'application sur Android API 26+.
 
-> Le dépôt contient les fichiers Gradle du projet, mais pas encore le Gradle Wrapper binaire. Android Studio peut configurer/utiliser Gradle pour la synchronisation. Une prochaine étape recommandée est de générer le wrapper avec `gradle wrapper` puis de versionner `gradlew`, `gradlew.bat` et `gradle/wrapper/gradle-wrapper.jar`.
+Le workflow GitHub Actions compile également `:app:assembleDebug` avec Gradle 8.9 et JDK 17.
 
-## Améliorations prévues
+## Syntaxe
 
-- Pause / reprise
-- Accords, par exemple `[Do4 Mi4 Sol4]`
-- Clavier de piano visuel
-- Sauvegarde des morceaux
-- Import/export MIDI
-- Samples de vrai piano pour remplacer le synthétiseur intégré
-- Tests unitaires du parser et du séquenceur
+| Fonction | Exemple |
+|---|---|
+| Note | `Do4` |
+| Dièse | `Fa#4` |
+| Bémol | `Sib4` |
+| Durée | `Ré4:0.5` |
+| Silence | `Pause:1` |
+| Accord | `[Do4 Mi4 Sol4]:2` |
+
+## Prochaines évolutions possibles
+
+- plusieurs octaves visibles sur le clavier
+- import/export MIDI
+- métronome
+- transposition globale
+- partage/export des morceaux
+- tests unitaires du parser et du séquenceur
