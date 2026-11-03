@@ -94,3 +94,23 @@ Le workflow GitHub Actions compile également `:app:assembleDebug` avec Gradle 8
 - transposition globale
 - partage/export des morceaux
 - tests unitaires du parser, du séquenceur et de l'OMR
+
+## Importer une partition PDF ou MusicXML
+
+La nouvelle interface suit le parcours **importer → vérifier/corriger → jouer**.
+
+- **PDF imprimé** : l'analyse est locale (sans téléversement vers un serveur). Le moteur OMR repère les portées, estime les hauteurs en clés de sol/fa, distingue plusieurs valeurs de notes et regroupe certains accords. L'OCR du texte (Do/Ré/Mi) reste disponible en secours. Les résultats sont **approximatifs** : comparez avec l'aperçu de la page avant de lancer la lecture.
+- **MusicXML (.musicxml, .xml) / MXL (.mxl)** : import structuré pour une meilleure fidélité des voix indépendantes, silences, durées pointées, tuplets, altérations, accords, liaisons de prolongation et indications de tempo. L'audio polyphonique utilise une synthèse en flux pour garder les différentes durées entre les deux mains.
+- **Éditeur** : insertion rapide de notes/accords/pauses, vérification immédiate de la syntaxe et exemple traditionnel de Frère Jacques. Les morceaux saisis peuvent être enregistrés sur l'appareil.
+
+### Exemple de PDF testé comme référence de mise au point
+
+Le fichier utilisateur *Frère Jacques* comporte une couverture suivie d'une partition sur **deux portées par système** (clé de sol et clé de fa), en **4/4**, à **100 BPM**, avec noires, blanches et croches reliées par des barres. Le détecteur reconnaît désormais l'espacement important entre les deux portées et filtre mieux les barres de mesure / clés qui pouvaient être prises pour des notes.
+
+**Limites importantes :** la reconnaissance visuelle de PDF reste expérimentale. Elle ne garantit pas les altérations écrites dans la portée, les armures, les reprises, les articulations, les polyrythmies, les scans inclinés ou manuscrits. Ce n'est **pas** un moteur professionnel Audiveris et l'import PDF ne produit pas de MusicXML fidèle. Pour les partitions complexes, exporter un MusicXML/MXL depuis un éditeur de partitions (par exemple MuseScore) donne un résultat nettement plus fiable.
+
+L'aperçu texte produit par MusicXML est **une représentation simplifiée** : tant qu'il n'est pas modifié, la lecture utilise la partition polyphonique structurée. Après une modification manuelle, la lecture revient à la syntaxe de l'éditeur. La sauvegarde locale enregistre actuellement la transcription texte (pas les voix indépendantes MusicXML). Les reprises ne sont pas encore déroulées automatiquement.
+
+### Vérification automatisée
+
+GitHub Actions exécute les tests JUnit du convertisseur MusicXML, puis compile et met à disposition l'APK debug dans les artefacts du workflow. Le PDF de référence envoyé par l'utilisateur n'est pas publié dans ce dépôt.
