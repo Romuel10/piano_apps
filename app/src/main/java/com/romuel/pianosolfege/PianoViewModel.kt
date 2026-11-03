@@ -17,6 +17,7 @@ import com.romuel.pianosolfege.pdf.PdfNoteReader
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class PianoViewModel(application: Application) : AndroidViewModel(application) {
     var input by mutableStateOf("Do4 Ré4 Mi4 Fa4 Sol4 La4 Si4 Do5\n[Do4 Mi4 Sol4]:2 Pause:0.5 [Fa4 La4 Do5]:2")
@@ -92,23 +93,52 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
         pdfJob?.cancel()
         stop()
         isPdfImporting = true
-        pdfStatus = "PDF : analyse OCR en cours…"
-        message = "Lecture du PDF…"
+        pdfStatus = "PDF : analyse OCR + OMR local en cours…"
+        message = "Lecture de la partition PDF…"
 
         pdfJob = viewModelScope.launch {
             try {
-                val result = pdfReader.read(uri)
+                val result = pdfReader.read(uri) { page, total ->
+                    pdfStatus = "PDF : analyse de la page $page/$total…"
+                }
+
                 if (result.playableText.isBlank()) {
-                    pdfStatus = "PDF analysé, mais aucune note de solfège textuelle n'a été reconnue."
-                    message = "Si le PDF contient uniquement une portée musicale, il faut un moteur OMR pour reconnaître les symboles de partition."
+                    pdfStatus = if (result.detectedStaffs > 0) {
+                        "${result.displayName} • ${result.detectedStaffs} portée(s) trouvée(s), aucune note suffisamment nette"
+                    } else {
+                        "${result.displayName} • aucune portée ou note exploitable détectée"
+                    }
+                    message = result.warnings.firstOrNull()
+                        ?: "Essaie un PDF imprimé plus net, bien droit et avec une portée classique."
                     return@launch
                 }
 
                 input = result.playableText
                 result.detectedBpm?.let { bpm = it }
                 songName = result.displayName.substringBeforeLast('.').ifBlank { "PDF importé" }
-                pdfStatus = "${result.displayName} • ${result.detectedNotes} note(s) détectée(s) sur ${result.pageCount} page(s)"
-                message = "PDF converti en notes${result.detectedBpm?.let { " • tempo $it BPM" } ?: ""}"
+
+                when (result.mode) {
+                    PdfNoteReader.RecognitionMode.SHEET_MUSIC_OMR -> {
+                        val confidencePercent = (result.confidence * 100f).roundToInt().coerceIn(0, 100)
+                        pdfStatus = "${result.displayName} • OMR : ${result.detectedNotes} note(s), ${result.detectedStaffs} portée(s), confiance $confidencePercent%"
+                        val warning = result.warnings.firstOrNull()
+                        message = buildString {
+                            append("Partition convertie en notes")
+                            result.detectedBpm?.let { append(" • tempo $it BPM") }
+                            if (warning != null) append(" • $warning")
+                        }
+                    }
+
+                    PdfNoteReader.RecognitionMode.SOLFEGE_TEXT -> {
+                        pdfStatus = "${result.displayName} • OCR texte : ${result.detectedNotes} note(s) sur ${result.pageCount} page(s)"
+                        message = "PDF converti depuis les noms de notes${result.detectedBpm?.let { " • tempo $it BPM" } ?: ""}"
+                    }
+
+                    PdfNoteReader.RecognitionMode.NONE -> {
+                        pdfStatus = "PDF analysé sans résultat jouable"
+                        message = "Aucune note exploitable détectée."
+                    }
+                }
 
                 if (playAfterImport) play()
             } catch (_: CancellationException) {
