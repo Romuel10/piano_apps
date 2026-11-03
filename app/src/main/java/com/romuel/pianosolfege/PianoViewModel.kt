@@ -45,8 +45,10 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
     var meter by mutableStateOf(ScoreMeter(4, 4))
         private set
 
-    var meterStatus by mutableStateOf("4/4 sélectionné manuellement")
+    var meterStatus by mutableStateOf("4/4 par défaut, à confirmer")
         private set
+
+    private var meterManuallySelected = false
 
     var rhythmWarnings by mutableStateOf<List<String>>(emptyList())
         private set
@@ -152,6 +154,7 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
     fun updateMeter(value: ScoreMeter) {
         if (isPdfImporting || isPlaying) return
         meter = value
+        meterManuallySelected = true
         meterStatus = "${value.display} sélectionné manuellement"
         val existingPdf = pdfUri
         if (existingPdf != null) {
@@ -188,7 +191,9 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
 
         pdfJob = viewModelScope.launch {
             try {
-                val result = pdfReader.read(uri, selectedMeter = meter) { page, total ->
+                val result = pdfReader.read(
+                    uri, selectedMeter = meter, forceSelectedMeter = meterManuallySelected,
+                ) { page, total ->
                     pdfStatus = "PDF : analyse de la page $page/$total…"
                 }
 
