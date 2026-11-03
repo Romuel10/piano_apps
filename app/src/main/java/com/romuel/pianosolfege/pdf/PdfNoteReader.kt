@@ -3,6 +3,7 @@ package com.romuel.pianosolfege.pdf
 import android.content.Context
 import com.romuel.pianosolfege.music.TimedNote
 import com.romuel.pianosolfege.music.ScoreMeter
+import com.romuel.pianosolfege.music.ScoreMarkings
 import com.romuel.pianosolfege.music.RhythmIssue
 import com.romuel.pianosolfege.music.MusicXmlImporter
 import android.graphics.Bitmap
@@ -92,7 +93,7 @@ class PdfNoteReader(private val context: Context) {
                             // OCR text remains useful for PDFs that literally contain
                             // Do/Ré/Mi or C/D/E note names and for tempo annotations.
                             val text = recognize(recognizer, bitmap)
-                            val meterOnPage = SolfegeOcrNormalizer.detectMeter(text)
+                            val meterOnPage = ScoreMarkings.detectMeter(text)
                             if (meterOnPage != null) detectedMeter = meterOnPage
                             if (text.isNotBlank()) {
                                 if (raw.isNotEmpty()) raw.append('\n')
@@ -230,26 +231,12 @@ class PdfNoteReader(private val context: Context) {
             val bpm: Int?,
         )
 
-        private val meterRegex = Regex("(?m)(?:^|\\s)([2-9]|1[0-2])\\s*[/⁄]\\s*(2|4|8|16)(?:\\s|$)")
-        private val stackedMeterRegex = Regex("(?m)^\\s*([2-9])\\s*\\n\\s*(2|4|8|16)\\s*$")
-
-        fun detectMeter(text: String): ScoreMeter? {
-            val match = meterRegex.find(text) ?: stackedMeterRegex.find(text)
-            val numerator = match?.groupValues?.getOrNull(1)?.toIntOrNull() ?: return null
-            val denominator = match.groupValues.getOrNull(2)?.toIntOrNull() ?: return null
-            return runCatching { ScoreMeter(numerator, denominator) }.getOrNull()
-        }
-
         private val noteRegex = Regex(
             pattern = "(?i)(?<![\\p{L}\\p{N}])(do|ré|re|mi|fa|sol|la|si|c|d|e|f|g|a|b)\\s*([#♯b♭])?\\s*([0-8])?(?:\\s*[:=]\\s*([0-9]+(?:[.,][0-9]+)?))?(?![\\p{L}])"
         )
         private val restRegex = Regex(
             pattern = "(?i)(?<![\\p{L}])(pause|silence|rest)(?:\\s*[:=]\\s*([0-9]+(?:[.,][0-9]+)?))?(?![\\p{L}])"
         )
-        private val bpmRegex = Regex("(?i)(?:tempo\\s*[:=]?\\s*)?(\\d{2,3})\\s*bpm")
-        private val tempoRegex = Regex("(?i)tempo\\s*[:=]\\s*(\\d{2,3})")
-        private val metronomeRegex = Regex("(?im)^\\s*(?:q|j|♩|♪|♬)\\s*=\\s*(\\d{2,3})\\s*$")
-
         private val canonical = mapOf(
             "do" to "Do", "re" to "Ré", "mi" to "Mi", "fa" to "Fa",
             "sol" to "Sol", "la" to "La", "si" to "Si",
@@ -291,11 +278,7 @@ class PdfNoteReader(private val context: Context) {
                 events += match.range.first to "Pause$duration"
             }
 
-            val bpm = (bpmRegex.find(text)?.groupValues?.getOrNull(1)
-                ?: tempoRegex.find(text)?.groupValues?.getOrNull(1)
-                ?: metronomeRegex.find(text)?.groupValues?.getOrNull(1))
-                ?.toIntOrNull()
-                ?.coerceIn(40, 220)
+            val bpm = ScoreMarkings.detectTempo(text)
 
             return Conversion(
                 playableText = events.sortedBy { it.first }.joinToString(" ") { it.second },
