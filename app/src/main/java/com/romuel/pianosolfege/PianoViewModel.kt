@@ -14,6 +14,7 @@ import com.romuel.pianosolfege.data.SavedSong
 import com.romuel.pianosolfege.data.SongRepository
 import com.romuel.pianosolfege.music.NoteParser
 import com.romuel.pianosolfege.music.ImportedScore
+import com.romuel.pianosolfege.music.ScoreMeter
 import com.romuel.pianosolfege.music.MusicXmlImporter
 import com.romuel.pianosolfege.music.PianoNote
 import com.romuel.pianosolfege.pdf.PdfNoteReader
@@ -39,6 +40,18 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     var pdfStatus by mutableStateOf("PDF : prêt à importer")
+        private set
+
+    var meter by mutableStateOf(ScoreMeter(4, 4))
+        private set
+
+    var meterStatus by mutableStateOf("4/4 sélectionné manuellement")
+        private set
+
+    var rhythmWarnings by mutableStateOf<List<String>>(emptyList())
+        private set
+
+    var approximatePlaybackApproved by mutableStateOf(false)
         private set
 
     var scoreSource by mutableStateOf<String?>(null)
@@ -96,6 +109,8 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateInput(value: String) {
         input = value
+        rhythmWarnings = emptyList()
+        approximatePlaybackApproved = false
         if (importedScore != null) {
             importedScore = null
             scoreSource = null
@@ -117,6 +132,8 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
         stop()
         importedScore = null
         scoreSource = null
+        rhythmWarnings = emptyList()
+        approximatePlaybackApproved = false
         pdfUri = null
         bpm = 100
         songName = "Frère Jacques - exemple"
@@ -130,6 +147,21 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
 
     fun changePdfPage(value: Int) {
         pdfPageIndex = value.coerceIn(0, (pdfPageCount - 1).coerceAtLeast(0))
+    }
+
+    fun updateMeter(value: ScoreMeter) {
+        if (isPdfImporting || isPlaying) return
+        meter = value
+        meterStatus = "${value.display} sélectionné manuellement"
+        val existingPdf = pdfUri
+        if (existingPdf != null) {
+            importPdf(existingPdf)
+        }
+    }
+
+    fun approveApproximatePlayback() {
+        approximatePlaybackApproved = true
+        message = "Lecture approximative autorisée : vérifie les temps signalés."
     }
 
     fun updateBpm(value: Int) {
@@ -148,16 +180,25 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
         pdfPageIndex = 0
         importedScore = null
         scoreSource = null
+        rhythmWarnings = emptyList()
+        approximatePlaybackApproved = false
         isPdfImporting = true
         pdfStatus = "PDF : analyse OCR + OMR local en cours…"
         message = "Lecture de la partition PDF…"
 
         pdfJob = viewModelScope.launch {
             try {
-                val result = pdfReader.read(uri) { page, total ->
+                val result = pdfReader.read(uri, selectedMeter = meter) { page, total ->
                     pdfStatus = "PDF : analyse de la page $page/$total…"
                 }
 
+                meter = result.meter
+                meterStatus = if (result.meterDetected) {
+                    "${meter.display} détecté dans le PDF"
+                } else {
+                    "${meter.display} choisi manuellement (non détecté avec certitude)"
+                }
+                rhythmWarnings = result.rhythmIssues.take(8).map { it.message() }
                 pdfPageCount = result.pageCount
                 pdfPageIndex = if (result.pageCount > 1) 1 else 0
 
@@ -190,10 +231,10 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
                             scoreSource = "PDF • lecture simultanée des mains (OMR à vérifier)"
                         }
                         val confidencePercent = (result.confidence * 100f).roundToInt().coerceIn(0, 100)
-                        pdfStatus = "${result.displayName} • OMR : ${result.detectedNotes} note(s), ${result.detectedStaffs} portée(s), confiance $confidencePercent%"
+                        pdfStatus = "${result.displayName} • OMR : ${result.detectedNotes} note(s), ${result.measures} mesure(s) • ${meter.display} • indice visuel $confidencePercent% (non calibré)"
                         val warning = result.warnings.firstOrNull()
                         message = buildString {
-                            append("Partition convertie en notes et durées par portée • vérifie les erreurs avant de jouer")
+                            append("Partition analysée : ${result.rhythmIssues.size} mesure(s)/portée(s) au rythme incohérent • vérifie avant de jouer")
                             result.detectedBpm?.let { append(" • tempo $it BPM") }
                             if (warning != null) append(" • $warning")
                         }
@@ -261,6 +302,10 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
         engine.stop()
 
         val score = importedScore
+        if (score != null && rhythmWarnings.isNotEmpty() && !approximatePlaybackApproved) {
+            message = "Lecture bloquée : ${rhythmWarnings.size} anomalie(s) rythmiques. Corrige la saisie ou confirme une écoute approximative."
+            return
+        }
         if (score != null) {
             playbackJob = viewModelScope.launch {
                 isPlaying = true
@@ -272,7 +317,7 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
                         currentNote = if (active.isEmpty()) null
                             else active.joinToString(" + ") { NoteParser.labelForMidi(it) }
                     }
-                    message = "Lecture MusicXML terminée"
+                    message = "Lecture de partition terminée"
                 } catch (_: CancellationException) {
                     message = "Lecture arrêtée"
                     throw CancellationException()
