@@ -44,7 +44,7 @@ android {
         targetSdk = 35
         // GitHub run numbers make every distributed build newer than the previous.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(100) ?: 3
-        versionName = "1.2.0"
+        versionName = "1.3.0"
     }
 
     compileOptions {
