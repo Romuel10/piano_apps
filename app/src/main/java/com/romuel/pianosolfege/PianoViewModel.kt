@@ -158,6 +158,9 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
                     pdfStatus = "PDF : analyse de la page $page/$total…"
                 }
 
+                pdfPageCount = result.pageCount
+                pdfPageIndex = if (result.pageCount > 1) 1 else 0
+
                 if (result.playableText.isBlank()) {
                     pdfStatus = if (result.detectedStaffs > 0) {
                         "${result.displayName} • ${result.detectedStaffs} portée(s) trouvée(s), aucune note suffisamment nette"
@@ -169,8 +172,6 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
                     return@launch
                 }
 
-                pdfPageCount = result.pageCount
-                pdfPageIndex = if (result.pageCount > 1) 1 else 0
                 input = result.playableText
                 scoreSource = "PDF • transcription optique provisoire, à vérifier"
                 result.detectedBpm?.let { bpm = it }
@@ -215,6 +216,8 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
     fun importMusicXml(uri: Uri) {
         pdfJob?.cancel()
         stop()
+        importedScore = null
+        scoreSource = null
         pdfUri = null
         pdfPageCount = 0
         isPdfImporting = true
