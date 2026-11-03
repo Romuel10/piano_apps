@@ -87,7 +87,7 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Écris une mélodie, importe un PDF de notes, puis laisse l'application jouer le morceau.",
+                text = "Écris une mélodie ou importe une vraie partition PDF : l'application reconnaît les notes puis les joue au piano.",
                 style = MaterialTheme.typography.bodyLarge,
             )
             Text(
@@ -102,19 +102,19 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(
-                        "Lire un PDF de notes",
+                        "Lire une partition PDF",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "L'app rend chaque page du PDF, reconnaît le texte musical (Do, Ré, Mi… ou C, D, E…) puis le convertit en notes et lance la lecture automatiquement.",
+                        "L'app rend les pages du PDF, cherche les portées et les têtes de notes avec son OMR local, convertit le résultat en notes/accords puis lance la lecture. Si le PDF contient plutôt Do, Ré, Mi… ou C, D, E…, l'OCR texte prend le relais.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Button(
                         onClick = { pdfPicker.launch(arrayOf("application/pdf")) },
                         enabled = !vm.isPdfImporting && !vm.isPlaying,
                     ) {
-                        Text(if (vm.isPdfImporting) "Analyse du PDF…" else "📄 Importer et jouer un PDF")
+                        Text(if (vm.isPdfImporting) "Analyse de la partition…" else "🎼 Importer et jouer une partition PDF")
                     }
                     Text(
                         text = vm.pdfStatus,
@@ -122,7 +122,7 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                        "Pour un PDF avec uniquement des notes dessinées sur une portée classique, un moteur OMR spécialisé est nécessaire ; cette version reconnaît les noms de notes imprimés dans le PDF.",
+                        "OMR local actuel : partitions imprimées propres et droites, portées classiques ; pour un système piano à deux portées, la portée supérieure est lue en clé de sol et l'inférieure en clé de fa. Les altérations, triolets, reprises et rythmes complexes peuvent demander une correction manuelle.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -132,10 +132,10 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                 value = vm.input,
                 onValueChange = vm::updateInput,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Notes et accords") },
+                label = { Text("Notes et accords reconnus") },
                 minLines = 5,
                 supportingText = {
-                    Text("Ex. Do4 Ré4:0.5 [Do4 Mi4 Sol4]:2 Pause:1 [Fa4 La4 Do5]")
+                    Text("Tu peux corriger le résultat OMR ici avant de relancer la lecture.")
                 },
             )
 
@@ -249,7 +249,7 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                     "• Durée en temps : :0.5, :1, :2, :4\n" +
                     "• Accord : [Do4 Mi4 Sol4]:2\n" +
                     "• Silence : Pause:1\n" +
-                    "• PDF : une note sans octave est interprétée en octave 4"
+                    "• PDF texte : une note sans octave est interprétée en octave 4"
             )
 
             Text(
