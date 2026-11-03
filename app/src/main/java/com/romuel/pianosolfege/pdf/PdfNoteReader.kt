@@ -1,6 +1,8 @@
 package com.romuel.pianosolfege.pdf
 
 import android.content.Context
+import com.romuel.pianosolfege.music.TimedNote
+import com.romuel.pianosolfege.music.MusicXmlImporter
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -38,6 +40,7 @@ class PdfNoteReader(private val context: Context) {
         val detectedStaffs: Int = 0,
         val confidence: Float = 0f,
         val warnings: List<String> = emptyList(),
+        val timedNotes: List<TimedNote> = emptyList(),
     )
 
     suspend fun read(
@@ -60,6 +63,8 @@ class PdfNoteReader(private val context: Context) {
                 var omrEvents = 0
                 var omrStaffs = 0
                 var omrConfidenceWeighted = 0f
+                val omrTimed = mutableListOf<TimedNote>()
+                var pageStartBeats = 0.0
                 val pagesToRead = min(total, MAX_PAGES)
 
                 for (index in 0 until pagesToRead) {
@@ -88,6 +93,14 @@ class PdfNoteReader(private val context: Context) {
                                 if (omrPlayable.isNotEmpty()) omrPlayable.append(' ')
                                 omrPlayable.append(omr.playableText)
                             }
+                            if (omr.timedNotes.isNotEmpty()) {
+                                omrTimed += omr.timedNotes.map {
+                                    it.copy(startBeats = it.startBeats + pageStartBeats)
+                                }
+                                pageStartBeats = omrTimed.maxOf {
+                                    it.startBeats + it.durationBeats
+                                }
+                            }
                             omrNotes += omr.detectedNotes
                             omrEvents += omr.detectedEvents
                             omrStaffs += omr.detectedStaffs
@@ -110,7 +123,9 @@ class PdfNoteReader(private val context: Context) {
                     useSheetOmr -> Result(
                         displayName = displayName(uri),
                         rawText = raw.toString(),
-                        playableText = omrPlayable.toString(),
+                        playableText = if (omrTimed.isNotEmpty()) {
+                            MusicXmlImporter.preview(omrTimed)
+                        } else omrPlayable.toString(),
                         detectedNotes = omrNotes,
                         pageCount = pagesToRead,
                         detectedBpm = textResult.bpm,
@@ -118,6 +133,7 @@ class PdfNoteReader(private val context: Context) {
                         detectedStaffs = omrStaffs,
                         confidence = omrConfidence,
                         warnings = omrWarnings.toList(),
+                        timedNotes = omrTimed,
                     )
 
                     useText -> Result(
