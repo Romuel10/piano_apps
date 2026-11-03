@@ -2,6 +2,9 @@ package com.romuel.pianosolfege.pdf
 
 import android.graphics.Bitmap
 import com.romuel.pianosolfege.music.NoteParser
+import com.romuel.pianosolfege.music.StaffEvent
+import com.romuel.pianosolfege.music.StaffTimeline
+import com.romuel.pianosolfege.music.TimedNote
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -24,6 +27,7 @@ internal object SheetMusicOmr {
         val detectedStaffs: Int,
         val confidence: Float,
         val warnings: List<String>,
+        val timedNotes: List<TimedNote> = emptyList(),
     )
 
     private data class Staff(
@@ -86,8 +90,9 @@ internal object SheetMusicOmr {
         var scoreSum = 0f
         var scoreItems = 0
         val warnings = mutableListOf<String>()
+        val staffEvents = mutableListOf<StaffEvent>()
 
-        systems.forEach { system ->
+        systems.forEachIndexed { systemIndex, system ->
             val systemCandidates = mutableListOf<Candidate>()
             val twoStaffPianoSystem = system.staffIndices.size == 2
 
@@ -113,7 +118,18 @@ internal object SheetMusicOmr {
                 )
             }
 
-            if (systemCandidates.isEmpty()) return@forEach
+            if (systemCandidates.isEmpty()) return@forEachIndexed
+
+            systemCandidates.forEach { candidate ->
+                staffEvents += StaffEvent(
+                    systemIndex = systemIndex,
+                    staffIndex = candidate.staffIndex,
+                    x = candidate.x,
+                    midi = candidate.midi,
+                    beats = candidate.beats.toDouble(),
+                    staffSpacing = staffs[candidate.staffIndex].spacing,
+                )
+            }
 
             val spacing = system.staffIndices
                 .map { staffs[it].spacing }
@@ -150,6 +166,7 @@ internal object SheetMusicOmr {
         warnings += "Les altérations, signatures rythmiques complexes, triolets, liaisons et reprises ne sont pas encore interprétés par l'OMR local."
 
         val confidence = if (scoreItems == 0) 0f else (scoreSum / scoreItems).coerceIn(0f, 1f)
+        val timeline = StaffTimeline.build(staffEvents)
         return Result(
             playableText = output.joinToString(" "),
             detectedNotes = noteCount,
@@ -157,6 +174,7 @@ internal object SheetMusicOmr {
             detectedStaffs = staffs.size,
             confidence = confidence,
             warnings = warnings,
+            timedNotes = timeline,
         )
     }
 
