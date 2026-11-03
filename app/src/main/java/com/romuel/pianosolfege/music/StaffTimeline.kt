@@ -31,7 +31,7 @@ data class RhythmIssue(
     val expectedBeats: Double,
 ) {
     fun message(): String =
-        "Mesure $measureNumber (portée ${staffIndex + 1}) : ${format(observedBeats)} temps lus / ${format(expectedBeats)} attendus"
+        "Mesure $measureNumber (${if (staffIndex < 0) "portées non délimitées" else "portée ${staffIndex + 1}"}) : ${format(observedBeats)} temps lus / ${format(expectedBeats)} attendus"
 
     private fun format(beats: Double): String =
         if (abs(beats - beats.toInt().toDouble()) < 0.001) beats.toInt().toString()
@@ -95,9 +95,10 @@ object StaffTimeline {
         var offset = 0.0
 
         events.groupBy { it.systemIndex }.toSortedMap().forEach { (systemIndex, systemEvents) ->
+            val minGap = (systemEvents.firstOrNull()?.staffSpacing ?: 12f) * 1.8f
             val bars = systemBarlines[systemIndex].orEmpty().sorted()
                 .fold(mutableListOf<Float>()) { accepted, bar ->
-                    if (accepted.isEmpty() || bar - accepted.last() > 4f) accepted.add(bar)
+                    if (accepted.isEmpty() || bar - accepted.last() > minGap) accepted.add(bar)
                     accepted
                 }
             if (bars.size < 2) {
