@@ -179,11 +179,21 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
 
                 when (result.mode) {
                     PdfNoteReader.RecognitionMode.SHEET_MUSIC_OMR -> {
+                        if (result.timedNotes.isNotEmpty()) {
+                            importedScore = ImportedScore(
+                                notes = result.timedNotes,
+                                bpm = result.detectedBpm ?: bpm,
+                                title = songName,
+                                editablePreview = result.playableText,
+                                warnings = result.warnings,
+                            )
+                            scoreSource = "PDF • lecture simultanée des mains (OMR à vérifier)"
+                        }
                         val confidencePercent = (result.confidence * 100f).roundToInt().coerceIn(0, 100)
                         pdfStatus = "${result.displayName} • OMR : ${result.detectedNotes} note(s), ${result.detectedStaffs} portée(s), confiance $confidencePercent%"
                         val warning = result.warnings.firstOrNull()
                         message = buildString {
-                            append("Partition convertie en notes")
+                            append("Partition convertie en notes et durées par portée • vérifie les erreurs avant de jouer")
                             result.detectedBpm?.let { append(" • tempo $it BPM") }
                             if (warning != null) append(" • $warning")
                         }
