@@ -527,7 +527,7 @@ internal object SheetMusicOmr {
         spacing: Float,
     ): Boolean {
         val radiusX = max(1, (spacing * 0.17f).roundToInt())
-        val dy = max(2, (spacing * 0.22f).roundToInt())
+        val dy = max(2, (spacing * 0.18f).roundToInt())
         var black = 0
         var tested = 0
         for (offsetY in listOf(-dy - 1, -dy, dy, dy + 1)) {
