@@ -165,7 +165,7 @@ object MusicXmlImporter {
         }
 
         val notes = raw.map { TimedNote(it.midi, it.start, it.duration) }
-            .filter { it.duration > 0 && it.start >= 0 }
+            .filter { it.durationBeats > 0 && it.startBeats >= 0 }
             .sortedWith(compareBy<TimedNote> { it.startBeats }.thenBy { it.midi })
         require(notes.isNotEmpty()) { "Ce MusicXML ne contient aucune note de piano exploitable." }
         require(notes.size <= 15_000) { "Partition trop volumineuse pour le lecteur mobile." }
