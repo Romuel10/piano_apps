@@ -53,6 +53,7 @@ class PdfNoteReader(private val context: Context) {
     suspend fun read(
         uri: Uri,
         selectedMeter: ScoreMeter = ScoreMeter(4, 4),
+        forceSelectedMeter: Boolean = false,
         onProgress: (page: Int, total: Int) -> Unit = { _, _ -> },
     ): Result = withContext(Dispatchers.IO) {
         val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
@@ -94,7 +95,7 @@ class PdfNoteReader(private val context: Context) {
                             // Do/Ré/Mi or C/D/E note names and for tempo annotations.
                             val text = recognize(recognizer, bitmap)
                             val meterOnPage = ScoreMarkings.detectMeter(text)
-                            if (meterOnPage != null) detectedMeter = meterOnPage
+                            if (meterOnPage != null && !forceSelectedMeter) detectedMeter = meterOnPage
                             if (text.isNotBlank()) {
                                 if (raw.isNotEmpty()) raw.append('\n')
                                 raw.append(text)
