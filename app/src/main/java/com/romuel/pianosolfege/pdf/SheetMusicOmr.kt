@@ -32,7 +32,14 @@ internal object SheetMusicOmr {
         val top: Int get() = lines.first()
         val bottom: Int get() = lines.last()
         val spacing: Float
-            get() = lines.zipWithNext { a, b -> (b - a).toFloat() }.average().toFloat()
+            get() {
+                if (lines.size < 2) return 0f
+                var total = 0f
+                for (i in 0 until lines.lastIndex) {
+                    total += (lines[i + 1] - lines[i]).toFloat()
+                }
+                return total / (lines.size - 1).toFloat()
+            }
     }
 
     private data class Candidate(
