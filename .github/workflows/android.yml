@@ -87,3 +87,15 @@ jobs:
       - name: Remove signing file
         if: always()
         run: rm -f "$RUNNER_TEMP/pianopartition-release.jks"
+
+      - name: Build unsigned release for local signing
+        if: steps.signing.outputs.enabled != 'true' && github.event_name == 'push'
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Upload unsigned release APK
+        if: steps.signing.outputs.enabled != 'true' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: piano-partition-plus-unsigned-release
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
