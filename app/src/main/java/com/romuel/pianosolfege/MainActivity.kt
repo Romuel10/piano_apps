@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.romuel.pianosolfege.music.NoteParser
+import com.romuel.pianosolfege.music.ScoreMeter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -159,6 +160,58 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                         style = MaterialTheme.typography.labelMedium,
                         color = accent,
                     )
+                    Text(
+                        "Mesure et rythme",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        vm.meterStatus,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(
+                            ScoreMeter(3, 4),
+                            ScoreMeter(4, 4),
+                            ScoreMeter(6, 8),
+                        ).forEach { selected ->
+                            if (vm.meter == selected) {
+                                Button(
+                                    onClick = { vm.updateMeter(selected) },
+                                    enabled = !vm.isPdfImporting && !vm.isPlaying,
+                                ) { Text(selected.display) }
+                            } else {
+                                OutlinedButton(
+                                    onClick = { vm.updateMeter(selected) },
+                                    enabled = !vm.isPdfImporting && !vm.isPlaying,
+                                ) { Text(selected.display) }
+                            }
+                        }
+                    }
+                    Text(
+                        "Si la mesure n'est pas reconnue, choisis-la ici. Modifier la mesure relance l'analyse du PDF.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (vm.rhythmWarnings.isNotEmpty()) {
+                        Text(
+                            "Rythme non validé — vérifie les temps de chaque mesure",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        vm.rhythmWarnings.take(5).forEach { warning ->
+                            Text(warning, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error)
+                        }
+                        if (!vm.approximatePlaybackApproved) {
+                            OutlinedButton(
+                                onClick = vm::approveApproximatePlayback,
+                                enabled = !vm.isPdfImporting,
+                            ) { Text("Écouter malgré les erreurs de rythme") }
+                        }
+                    }
                     Text(
                         "La lecture du PDF ne démarre pas automatiquement : contrôlez d'abord la transcription.",
                         style = MaterialTheme.typography.bodySmall,
