@@ -332,6 +332,19 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                         valueRange = 40f..220f,
                     )
                     Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedButton(
+                            onClick = { vm.updateBpm(vm.bpm - 1) },
+                            enabled = !vm.isPlaying,
+                        ) { Text("− 1 BPM") }
+                        OutlinedButton(
+                            onClick = { vm.updateBpm(vm.bpm + 1) },
+                            enabled = !vm.isPlaying,
+                        ) { Text("+ 1 BPM") }
+                    }
+                    Text(vm.tempoStatus, style = MaterialTheme.typography.bodySmall)
+                    Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
