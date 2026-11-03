@@ -216,7 +216,7 @@ object MusicXmlImporter {
      * An editable approximation: the retained TimedNote score, NOT this text,
      * is used for exact polyphonic playback until the editor is changed.
      */
-    private fun preview(notes: List<TimedNote>): String {
+    internal fun preview(notes: List<TimedNote>): String {
         val groups = notes.groupBy { (it.startBeats * 1000).roundToInt() }.toSortedMap()
         val keys = groups.keys.toList()
         val out = mutableListOf<String>()
