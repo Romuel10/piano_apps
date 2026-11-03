@@ -44,6 +44,15 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
     var scoreSource by mutableStateOf<String?>(null)
         private set
 
+    var pdfUri by mutableStateOf<Uri?>(null)
+        private set
+
+    var pdfPageCount by mutableIntStateOf(0)
+        private set
+
+    var pdfPageIndex by mutableIntStateOf(0)
+        private set
+
     var currentNote by mutableStateOf<String?>(null)
         private set
 
@@ -108,6 +117,7 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
         stop()
         importedScore = null
         scoreSource = null
+        pdfUri = null
         bpm = 100
         songName = "Frère Jacques - exemple"
         input = """Do4 Ré4 Mi4 Do4  Do4 Ré4 Mi4 Do4
@@ -116,6 +126,10 @@ Sol4:0.5 La4:0.5 Sol4:0.5 Fa4:0.5 Mi4 Do4
 Sol4:0.5 La4:0.5 Sol4:0.5 Fa4:0.5 Mi4 Do4
 Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
         message = "Exemple de la mélodie chargé à 100 BPM (pas une transcription du PDF)."
+    }
+
+    fun changePdfPage(value: Int) {
+        pdfPageIndex = value.coerceIn(0, (pdfPageCount - 1).coerceAtLeast(0))
     }
 
     fun updateBpm(value: Int) {
@@ -129,6 +143,9 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
     fun importPdf(uri: Uri, playAfterImport: Boolean = false) {
         pdfJob?.cancel()
         stop()
+        pdfUri = uri
+        pdfPageCount = 0
+        pdfPageIndex = 0
         importedScore = null
         scoreSource = null
         isPdfImporting = true
@@ -152,6 +169,8 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
                     return@launch
                 }
 
+                pdfPageCount = result.pageCount
+                pdfPageIndex = if (result.pageCount > 1) 1 else 0
                 input = result.playableText
                 scoreSource = "PDF • transcription optique provisoire, à vérifier"
                 result.detectedBpm?.let { bpm = it }
@@ -196,6 +215,8 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
     fun importMusicXml(uri: Uri) {
         pdfJob?.cancel()
         stop()
+        pdfUri = null
+        pdfPageCount = 0
         isPdfImporting = true
         pdfStatus = "Import MusicXML : analyse des voix et des mesures…"
         pdfJob = viewModelScope.launch {
@@ -342,6 +363,7 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
         stop()
         importedScore = null
         scoreSource = null
+        pdfUri = null
         input = song.content
         bpm = song.bpm
         songName = song.name
