@@ -8,12 +8,43 @@ android {
     namespace = "com.romuel.pianosolfege"
     compileSdk = 35
 
+    // The private signing key is injected by GitHub Actions secrets, never committed.
+    val signingFile = System.getenv("PIANO_KEYSTORE_FILE")
+    val signingStorePassword = System.getenv("PIANO_KEYSTORE_PASSWORD")
+    val signingKeyPassword = System.getenv("PIANO_KEY_PASSWORD")
+    val signingAlias = System.getenv("PIANO_KEY_ALIAS")
+    val canSignRelease = !signingFile.isNullOrBlank() &&
+        !signingStorePassword.isNullOrBlank() &&
+        !signingKeyPassword.isNullOrBlank() &&
+        !signingAlias.isNullOrBlank()
+
+    signingConfigs {
+        if (canSignRelease) {
+            create("distribution") {
+                storeFile = file(signingFile!!)
+                storePassword = signingStorePassword
+                keyAlias = signingAlias
+                keyPassword = signingKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            if (canSignRelease) {
+                signingConfig = signingConfigs.getByName("distribution")
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.romuel.pianosolfege"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        // GitHub run numbers make every distributed build newer than the previous.
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(100) ?: 3
+        versionName = "1.2.0"
     }
 
     compileOptions {
