@@ -356,6 +356,15 @@ internal object SheetMusicOmr {
 
                 if (localPeak) {
                     val y = targetY.roundToInt()
+                    // Reject horizontal beams and ledger fragments that have
+                    // enough ink to look like heads but lack an oval silhouette.
+                    if (!looksLikeHead(ink, width, height, previousX, y, spacing)) {
+                        previousPrevious = previous
+                        previous = current
+                        previousX = x0
+                        x0 += xStep
+                        continue
+                    }
                     val inner = headDensity(
                         ink,
                         width,
@@ -368,7 +377,10 @@ internal object SheetMusicOmr {
                     )
                     val stem = hasStem(ink, width, height, previousX, y, spacing)
                     val beam = stem && hasBeam(ink, width, height, staff, previousX, y, spacing)
-                    val filled = inner >= FILLED_HEAD_THRESHOLD
+                    // A solid notehead stays dark in the center on BOTH sides
+                    // of the staff/ledger line. Thin ledger strokes inside
+                    // hollow heads should not make them look like quarters.
+                    val filled = hasSolidCore(ink, width, height, previousX, y, spacing)
                     val beats = when {
                         filled && beam -> 0.5f
                         filled -> 1f
@@ -477,6 +489,58 @@ internal object SheetMusicOmr {
         return if (eligible == 0) 0f else dark.toFloat() / eligible.toFloat()
     }
 
+    /**
+     * Oval heads have substantial ink above and below the center line.
+     * Beams are thin and fail this symmetric-shoulder check; it prevents
+     * phantom high notes in beamed eighth-note passages.
+     */
+    private fun looksLikeHead(
+        ink: ByteArray,
+        width: Int,
+        height: Int,
+        x: Int,
+        y: Int,
+        spacing: Float,
+    ): Boolean {
+        val shoulder = max(3, (spacing * 0.33f).roundToInt())
+        val rx = max(3, (spacing * 0.72f).roundToInt())
+        val minimum = max(4, (spacing * 0.42f).roundToInt())
+        if (y - shoulder < 0 || y + shoulder >= height) return false
+
+        fun widthAt(yy: Int): Int {
+            var dark = 0
+            for (xx in max(0, x - rx)..min(width - 1, x + rx)) {
+                if (ink[yy * width + xx].toInt() != 0) dark++
+            }
+            return dark
+        }
+        return widthAt(y - shoulder) >= minimum &&
+            widthAt(y + shoulder) >= minimum
+    }
+
+    private fun hasSolidCore(
+        ink: ByteArray,
+        width: Int,
+        height: Int,
+        x: Int,
+        y: Int,
+        spacing: Float,
+    ): Boolean {
+        val radiusX = max(1, (spacing * 0.17f).roundToInt())
+        val dy = max(2, (spacing * 0.22f).roundToInt())
+        var black = 0
+        var tested = 0
+        for (offsetY in listOf(-dy - 1, -dy, dy, dy + 1)) {
+            val yy = y + offsetY
+            if (yy !in 0 until height) continue
+            for (xx in max(0, x - radiusX)..min(width - 1, x + radiusX)) {
+                tested++
+                if (ink[yy * width + xx].toInt() != 0) black++
+            }
+        }
+        return tested > 0 && black.toFloat() / tested >= 0.65f
+    }
+
     private fun hasStem(
         ink: ByteArray,
         width: Int,
@@ -485,7 +549,9 @@ internal object SheetMusicOmr {
         centerY: Int,
         spacing: Float,
     ): Boolean {
-        val halfHead = max(2, (spacing * 0.70f).roundToInt())
+        // Noteheads are asymmetric: the stem can be 1.1 staff spaces
+        // to the right or left of the detected head center.
+        val halfHead = max(2, (spacing * 1.10f).roundToInt())
         val search = max(4, (spacing * 3.7f).roundToInt())
         val minimumRun = max(4, (spacing * 1.45f).roundToInt())
 
@@ -531,7 +597,9 @@ internal object SheetMusicOmr {
         val yMax = min(height - 1, centerY + yRadius)
 
         for (y in yMin..yMax) {
-            if (abs(y - centerY) < spacing * 0.75f) continue
+            // A ledger line one staff-space away is NOT a beam.
+            // Genuine beaming connects the far ends of note stems.
+            if (abs(y - centerY) < spacing * 1.9f) continue
             if (staff.lines.any { abs(y - it) <= lineMask }) continue
             var run = 0
             var best = 0
