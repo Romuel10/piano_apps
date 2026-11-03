@@ -1,4 +1,4 @@
-# Piano Solfège Android
+# Piano Partition+ — Android
 
 Application Android en **Kotlin + Jetpack Compose** qui joue des mélodies, des accords et des partitions PDF.
 
@@ -114,3 +114,14 @@ L'aperçu texte produit par MusicXML est **une représentation simplifiée** : t
 ### Vérification automatisée
 
 GitHub Actions exécute les tests JUnit du convertisseur MusicXML, puis compile et met à disposition l'APK debug dans les artefacts du workflow. Le PDF de référence envoyé par l'utilisateur n'est pas publié dans ce dépôt.
+
+
+## Version 1.2 — lecture PDF par mains indépendantes et identité Android
+
+La lecture des partitions PDF se base désormais sur un **calendrier de notes polyphonique** : la main gauche et la main droite sont traitées indépendamment et une blanche peut rester tenue pendant plusieurs noires sur l'autre portée. Cela corrige une erreur du précédent lecteur, qui regroupait les notes par position horizontale et coupait des durées au plus court accord. Les tests JUnit valident cette synchronisation pour les accords, les deux mains et les systèmes successifs.
+
+**L'OMR de PDF demeure expérimental.** Il détecte des symboles par analyse de pixels ; il peut encore confondre des notes et ne lit pas toutes les subtilités de la gravure musicale. Pour une transcription de partition complexe fiable, préférez l'import **MusicXML/MXL** à partir d'un éditeur de partitions. Ne considérez pas la prévisualisation PDF comme une transcription certifiée.
+
+L'application porte désormais le nom **Piano Partition+** et possède une icône de lanceur en forme de clavier de piano et de clé de sol, avec les mêmes informations d'identité Android qu'avant (`com.romuel.pianosolfege`).
+
+**Mises à jour sans désinstallation :** une configuration de signature pérenne a été préparée. Voir **[SIGNING.md](SIGNING.md)** pour installer une clé privée via les secrets GitHub et générer des APK `piano-partition-plus-release`. Les APK debug sont uniquement destinées aux essais et ne bénéficient pas de garantie de mise à jour sur place. Une transition unique peut être nécessaire depuis l'ancienne version debug.
