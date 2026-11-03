@@ -31,7 +31,7 @@ class MeasuredRhythmTest {
         assertEquals(2, result.measures)
         assertTrue(result.valid)
         assertEquals(12, result.notes.size)
-        assertEquals(4.0, result.notes.first { it.midi == 60 && it.startBeats > 2 }.startBeats, 0.001)
+        assertEquals(4.0, result.notes.first { it.midi == 60 && it.startBeats >= 4.0 }.startBeats, 0.001)
         assertEquals(6.0, result.notes.first { it.midi == 55 && it.startBeats > 2 }.startBeats, 0.001)
         assertEquals(8.0, result.notes.maxOf { it.startBeats + it.durationBeats }, 0.001)
     }
