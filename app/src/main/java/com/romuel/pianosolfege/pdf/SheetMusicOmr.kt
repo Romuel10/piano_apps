@@ -234,7 +234,7 @@ internal object SheetMusicOmr {
                 val lower = staffs[index + 1]
                 val spacing = (upper.spacing + lower.spacing) / 2f
                 val gap = lower.top - upper.bottom
-                if (gap > spacing * 1.2f && gap < spacing * 6.5f) {
+                if (gap > spacing * 1.2f && gap < spacing * 11.5f) {
                     result += SystemGroup(listOf(index, index + 1))
                     index += 2
                     continue
@@ -332,12 +332,12 @@ internal object SheetMusicOmr {
 
         if (raw.isEmpty()) return raw
 
-        // The same head can score on two neighbouring pitch positions. Keep the
+        // The same head can score on two neighbouring pitch positions and multiple nearby X scan steps. Keep the
         // stronger one unless they are spatially separated enough to be a true second.
         val accepted = mutableListOf<Candidate>()
         raw.sortedByDescending { it.score }.forEach { candidate ->
             val duplicate = accepted.any { other ->
-                abs(candidate.x - other.x) < spacing * 0.38f &&
+                abs(candidate.x - other.x) < spacing * 0.65f &&
                     abs(candidate.y - other.y) < spacing * 0.56f
             }
             if (!duplicate) accepted += candidate
@@ -541,7 +541,7 @@ internal object SheetMusicOmr {
     private const val STAFF_LINE_COVERAGE = 0.23f
     private const val MIN_STAFF_SPACING = 5f
     private const val MAX_STAFF_SPACING = 90f
-    private const val HEAD_DENSITY_THRESHOLD = 0.17f
+    private const val HEAD_DENSITY_THRESHOLD = 0.16f
     private const val FILLED_HEAD_THRESHOLD = 0.38f
     private const val MIN_STAFF_STEP = -6
     private const val MAX_STAFF_STEP = 14
