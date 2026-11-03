@@ -84,36 +84,6 @@ jobs:
           path: app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
 
-      # Temporary bootstrap artefacts allow the initial permanent release
-      # APK to be signed offline; never put a private key in this repository.
-      - name: Build unsigned bootstrap release
-        if: steps.signing.outputs.enabled != 'true' && github.event_name == 'push'
-        run: gradle :app:assembleRelease --stacktrace
-
-      - name: Export signing utility
-        if: steps.signing.outputs.enabled != 'true' && github.event_name == 'push'
-        run: |
-          mkdir -p signing-tool
-          APKSIGNER_JAR=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner.jar | sort -V | tail -n 1)
-          test -n "$APKSIGNER_JAR"
-          cp "$APKSIGNER_JAR" signing-tool/apksigner.jar
-
-      - name: Upload unsigned bootstrap APK
-        if: steps.signing.outputs.enabled != 'true' && github.event_name == 'push'
-        uses: actions/upload-artifact@v4
-        with:
-          name: bootstrap-unsigned-release
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
-          if-no-files-found: error
-
-      - name: Upload APK signing utility
-        if: steps.signing.outputs.enabled != 'true' && github.event_name == 'push'
-        uses: actions/upload-artifact@v4
-        with:
-          name: bootstrap-apksigner
-          path: signing-tool/apksigner.jar
-          if-no-files-found: error
-
       - name: Remove signing file
         if: always()
         run: rm -f "$RUNNER_TEMP/pianopartition-release.jks"
