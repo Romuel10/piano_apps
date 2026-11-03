@@ -44,6 +44,11 @@ object MusicXmlImporter {
     suspend fun read(context: Context, uri: Uri): ImportedScore = withContext(Dispatchers.IO) {
         val data = context.contentResolver.openInputStream(uri)?.use { readLimited(it, MAX_XML_BYTES) }
             ?: error("Impossible d'ouvrir le fichier MusicXML.")
+        parseBytes(data)
+    }
+
+    /** Also used by JVM tests with in-memory MusicXML fixtures. */
+    internal fun parseBytes(data: ByteArray): ImportedScore {
         val xmlData = if (data.size >= 2 && data[0] == 0x50.toByte() && data[1] == 0x4B.toByte()) {
             extractMxl(data)
         } else data
