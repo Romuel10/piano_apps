@@ -5,6 +5,8 @@ import com.romuel.pianosolfege.music.NoteParser
 import com.romuel.pianosolfege.music.StaffEvent
 import com.romuel.pianosolfege.music.StaffTimeline
 import com.romuel.pianosolfege.music.TimedNote
+import com.romuel.pianosolfege.music.ScoreMeter
+import com.romuel.pianosolfege.music.RhythmIssue
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -28,6 +30,8 @@ internal object SheetMusicOmr {
         val confidence: Float,
         val warnings: List<String>,
         val timedNotes: List<TimedNote> = emptyList(),
+        val measures: Int = 0,
+        val rhythmIssues: List<RhythmIssue> = emptyList(),
     )
 
     private data class Staff(
@@ -61,7 +65,7 @@ internal object SheetMusicOmr {
 
     private enum class Clef { TREBLE, BASS }
 
-    fun analyze(bitmap: Bitmap): Result {
+    fun analyze(bitmap: Bitmap, meter: ScoreMeter = ScoreMeter(4, 4)): Result {
         if (bitmap.width < 160 || bitmap.height < 160) return emptyResult()
 
         val width = bitmap.width
@@ -91,8 +95,12 @@ internal object SheetMusicOmr {
         var scoreItems = 0
         val warnings = mutableListOf<String>()
         val staffEvents = mutableListOf<StaffEvent>()
+        val barlinesBySystem = mutableMapOf<Int, List<Float>>()
 
         systems.forEachIndexed { systemIndex, system ->
+            barlinesBySystem[systemIndex] = detectBarlines(
+                ink, width, height, system.staffIndices.map { staffs[it] },
+            )
             val systemCandidates = mutableListOf<Candidate>()
             val twoStaffPianoSystem = system.staffIndices.size == 2
 
@@ -166,7 +174,11 @@ internal object SheetMusicOmr {
         warnings += "Les altérations, signatures rythmiques complexes, triolets, liaisons et reprises ne sont pas encore interprétés par l'OMR local."
 
         val confidence = if (scoreItems == 0) 0f else (scoreSum / scoreItems).coerceIn(0f, 1f)
-        val timeline = StaffTimeline.build(staffEvents)
+        val rhythm = StaffTimeline.analyze(staffEvents, barlinesBySystem, meter)
+        if (rhythm.issues.isNotEmpty()) {
+            warnings += "Attention : le rythme ne correspond pas à ${meter.display} dans ${rhythm.issues.size} portée(s)/mesure(s)."
+            warnings += rhythm.issues.take(5).map { it.message() }
+        }
         return Result(
             playableText = output.joinToString(" "),
             detectedNotes = noteCount,
@@ -174,8 +186,42 @@ internal object SheetMusicOmr {
             detectedStaffs = staffs.size,
             confidence = confidence,
             warnings = warnings,
-            timedNotes = timeline,
+            timedNotes = rhythm.notes,
+            measures = rhythm.measures,
+            rhythmIssues = rhythm.issues,
         )
+    }
+
+
+    /**
+     * Detect strong full-height barlines, NOT short stems or horizontal beams.
+     * On piano systems a genuine barline connects the two staves and is
+     * therefore much longer than an ordinary note stem.
+     */
+    private fun detectBarlines(
+        ink: ByteArray, width: Int, height: Int, systemStaves: List<Staff>,
+    ): List<Float> {
+        if (systemStaves.isEmpty()) return emptyList()
+        val top = systemStaves.first().top.coerceIn(0, height - 1)
+        val bottom = systemStaves.last().bottom.coerceIn(top + 1, height - 1)
+        val span = bottom - top + 1
+        val minDark = (span * 0.91f).roundToInt()
+        val boundaries = mutableListOf<Float>()
+        var runStart = -1
+        for (x in 0 until width) {
+            var dark = 0
+            for (y in top..bottom) {
+                if (ink[y * width + x].toInt() != 0) dark++
+            }
+            if (dark >= minDark) {
+                if (runStart < 0) runStart = x
+            } else if (runStart >= 0) {
+                boundaries += (runStart + x - 1) / 2f
+                runStart = -1
+            }
+        }
+        if (runStart >= 0) boundaries += (runStart + width - 1) / 2f
+        return boundaries
     }
 
     private fun detectStaffs(ink: ByteArray, width: Int, height: Int): List<Staff> {
