@@ -267,7 +267,13 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
                 isPaused = false
                 message = "Lecture polyphonique de ${score.notes.size} notes…"
                 try {
-                    scorePlayer.play(score.notes, bpm, { isPaused }) { active ->
+                    val tempoScale = bpm.toDouble() / score.bpm.coerceAtLeast(1)
+                    val adjustedTempoMap = score.tempoChanges.map { change ->
+                        change.copy(
+                            bpm = (change.bpm * tempoScale).roundToInt().coerceIn(40, 220),
+                        )
+                    }
+                    scorePlayer.play(score.notes, bpm, adjustedTempoMap, { isPaused }) { active ->
                         activeMidis = active
                         currentNote = if (active.isEmpty()) null
                             else active.joinToString(" + ") { NoteParser.labelForMidi(it) }
