@@ -67,6 +67,44 @@ class MusicXmlImporterTest {
         assertEquals(100, result.bpm)
     }
 
+    @Test fun standardKeySignatureAppliesToUnalteredPitches() {
+        val xml = """
+            <score-partwise>
+              <part id="P1">
+                <measure number="1">
+                  <attributes><divisions>1</divisions><key><fifths>1</fifths></key></attributes>
+                  <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration></note>
+                </measure>
+              </part>
+            </score-partwise>
+        """.trimIndent()
+        val result = MusicXmlImporter.parseBytes(xml.toByteArray())
+        assertEquals(66, result.notes.single().midi) // F sharp in G major.
+    }
+
+    @Test fun tempoMapPreservesChangesAndDottedMetronomeUnits() {
+        val xml = """
+            <score-partwise>
+              <part id="P1">
+                <measure number="1">
+                  <attributes><divisions>1</divisions></attributes>
+                  <direction><sound tempo="100"/></direction>
+                  <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration></note>
+                  <direction><direction-type><metronome><beat-unit>eighth</beat-unit>
+                    <beat-unit-dot/><per-minute>120</per-minute></metronome></direction-type></direction>
+                  <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration></note>
+                </measure>
+              </part>
+            </score-partwise>
+        """.trimIndent()
+        val result = MusicXmlImporter.parseBytes(xml.toByteArray())
+        assertEquals(100, result.bpm)
+        assertEquals(2, result.tempoChanges.size)
+        assertEquals(0.0, result.tempoChanges[0].startBeats, 0.001)
+        assertEquals(1.0, result.tempoChanges[1].startBeats, 0.001)
+        assertEquals(90, result.tempoChanges[1].bpm) // dotted eighth = 0.75 quarter notes.
+    }
+
     @Test fun tiesAcrossMeasuresExtendNotes() {
         val xml = """
             <score-partwise>
