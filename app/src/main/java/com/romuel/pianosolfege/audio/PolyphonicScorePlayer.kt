@@ -4,6 +4,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import com.romuel.pianosolfege.music.TimedNote
+import com.romuel.pianosolfege.music.TempoChange
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -38,17 +39,52 @@ class PolyphonicScorePlayer {
     suspend fun play(
         notes: List<TimedNote>,
         bpm: Int,
+        tempoChanges: List<TempoChange>,
         paused: () -> Boolean,
         onActive: (List<Int>) -> Unit,
     ) = withContext(Dispatchers.Default) {
         if (notes.isEmpty()) return@withContext
-        val tempo = bpm.coerceIn(40, 220)
-        val beatsPerSecond = tempo / 60.0
-        val lastBeat = notes.maxOf { it.startBeats + it.durationBeats }
-        require(lastBeat * 60 / tempo < 10 * 60) {
+        val fallbackTempo = bpm.coerceIn(40, 220)
+        val tempoMap = tempoChanges
+            .filter { it.startBeats >= 0.0 }
+            .sortedBy { it.startBeats }
+            .toMutableList()
+        if (tempoMap.firstOrNull()?.startBeats != 0.0) {
+            tempoMap.add(0, TempoChange(0.0, fallbackTempo))
+        }
+
+        fun secondsAt(beat: Double): Double {
+            var elapsed = 0.0
+            var lastBeat = 0.0
+            var currentTempo = fallbackTempo
+            for (change in tempoMap) {
+                if (change.startBeats <= 0.0) {
+                    currentTempo = change.bpm.coerceIn(40, 220)
+                    continue
+                }
+                if (change.startBeats >= beat) break
+                elapsed += (change.startBeats - lastBeat) * 60.0 / currentTempo
+                lastBeat = change.startBeats
+                currentTempo = change.bpm.coerceIn(40, 220)
+            }
+            return elapsed + (beat - lastBeat).coerceAtLeast(0.0) * 60.0 / currentTempo
+        }
+
+        data class ScheduledNote(val midi: Int, val startSeconds: Double, val endSeconds: Double)
+        val scheduled = notes.map { note ->
+            ScheduledNote(
+                midi = note.midi,
+                startSeconds = secondsAt(note.startBeats),
+                endSeconds = secondsAt(note.startBeats + note.durationBeats),
+            )
+        }.filter { it.endSeconds > it.startSeconds }.sortedBy { it.startSeconds }
+        if (scheduled.isEmpty()) return@withContext
+
+        val totalSeconds = scheduled.maxOf { it.endSeconds }
+        require(totalSeconds < 10 * 60) {
             "La partition dépasse la limite de 10 minutes du lecteur."
         }
-        val totalFrames = (lastBeat / beatsPerSecond * sampleRate).toLong()
+        val totalFrames = (totalSeconds * sampleRate).toLong().coerceAtLeast(1L)
         val bufferFrames = 2048
         val minBytes = AudioTrack.getMinBufferSize(
             sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT,
@@ -61,7 +97,6 @@ class PolyphonicScorePlayer {
         var written = 0L
         var wasPaused = false
         var lastProgress = -1L
-        val sorted = notes.sortedBy { it.startBeats }
         try {
             output.play()
             while (written < totalFrames) {
@@ -79,11 +114,10 @@ class PolyphonicScorePlayer {
                     wasPaused = false
                 }
                 val frames = min(bufferFrames.toLong(), totalFrames - written).toInt()
-                val firstBeat = written.toDouble() / sampleRate * beatsPerSecond
-                val lastWindowBeat = (written + frames).toDouble() / sampleRate * beatsPerSecond
-                val active = sorted.filter {
-                    it.startBeats <= lastWindowBeat &&
-                        it.startBeats + it.durationBeats >= firstBeat
+                val firstSeconds = written.toDouble() / sampleRate
+                val lastWindowSeconds = (written + frames).toDouble() / sampleRate
+                val active = scheduled.filter {
+                    it.startSeconds <= lastWindowSeconds && it.endSeconds >= firstSeconds
                 }
                 val frequencies = active.map {
                     440.0 * 2.0.pow((it.midi - 69) / 12.0)
@@ -91,13 +125,13 @@ class PolyphonicScorePlayer {
                 val pcm = ShortArray(frames)
                 val norm = sqrt(max(1, active.size).toDouble())
                 for (i in 0 until frames) {
-                    val beat = (written + i).toDouble() / sampleRate * beatsPerSecond
+                    val secondsAtFrame = (written + i).toDouble() / sampleRate
                     var combined = 0.0
                     for (j in active.indices) {
                         val note = active[j]
-                        if (beat < note.startBeats || beat > note.startBeats + note.durationBeats) continue
-                        val seconds = (beat - note.startBeats) / beatsPerSecond
-                        val remaining = (note.startBeats + note.durationBeats - beat) / beatsPerSecond
+                        if (secondsAtFrame < note.startSeconds || secondsAtFrame > note.endSeconds) continue
+                        val seconds = secondsAtFrame - note.startSeconds
+                        val remaining = note.endSeconds - secondsAtFrame
                         val attack = min(1.0, seconds / 0.014)
                         val release = min(1.0, remaining / 0.08)
                         val envelope = attack * release * exp(-1.0 * seconds)
@@ -122,16 +156,21 @@ class PolyphonicScorePlayer {
                 if (written / (sampleRate / 4) != lastProgress) {
                     lastProgress = written / (sampleRate / 4)
                     val activeMidis = active.filter {
-                        firstBeat >= it.startBeats && firstBeat < it.startBeats + it.durationBeats
+                        firstSeconds >= it.startSeconds && firstSeconds < it.endSeconds
                     }.map { it.midi }.distinct()
                     withContext(Dispatchers.Main) { onActive(activeMidis) }
                 }
             }
 
-            // Let the device play the last buffered frames before releasing it.
-            while (output.playbackHeadPosition.toLong() < totalFrames - bufferFrames &&
-                output.playState == AudioTrack.PLAYSTATE_PLAYING) {
+            // Drain every generated frame before flushing/releasing the track.
+            while (output.playbackHeadPosition.toLong() < totalFrames) {
                 currentCoroutineContext().ensureActive()
+                if (paused()) {
+                    if (output.playState == AudioTrack.PLAYSTATE_PLAYING) output.pause()
+                    delay(25)
+                    continue
+                }
+                if (output.playState != AudioTrack.PLAYSTATE_PLAYING) output.play()
                 delay(20)
             }
         } finally {
