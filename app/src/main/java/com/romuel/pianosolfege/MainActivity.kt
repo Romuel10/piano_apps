@@ -1,8 +1,11 @@
 package com.romuel.pianosolfege
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -53,6 +57,21 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun PianoApp(vm: PianoViewModel = viewModel()) {
+    val context = LocalContext.current
+    val pdfPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            vm.importPdf(uri, playAfterImport = true)
+        }
+    }
+
     Scaffold { innerPadding ->
         Column(
             modifier = Modifier
@@ -68,7 +87,7 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Écris une mélodie ou des accords en solfège, choisis le tempo et laisse l'application les jouer.",
+                text = "Écris une mélodie, importe un PDF de notes, puis laisse l'application jouer le morceau.",
                 style = MaterialTheme.typography.bodyLarge,
             )
             Text(
@@ -76,6 +95,38 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        "Lire un PDF de notes",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        "L'app rend chaque page du PDF, reconnaît le texte musical (Do, Ré, Mi… ou C, D, E…) puis le convertit en notes et lance la lecture automatiquement.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Button(
+                        onClick = { pdfPicker.launch(arrayOf("application/pdf")) },
+                        enabled = !vm.isPdfImporting && !vm.isPlaying,
+                    ) {
+                        Text(if (vm.isPdfImporting) "Analyse du PDF…" else "📄 Importer et jouer un PDF")
+                    }
+                    Text(
+                        text = vm.pdfStatus,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        "Pour un PDF avec uniquement des notes dessinées sur une portée classique, un moteur OMR spécialisé est nécessaire ; cette version reconnaît les noms de notes imprimés dans le PDF.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
 
             OutlinedTextField(
                 value = vm.input,
@@ -110,7 +161,7 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Button(onClick = vm::play, enabled = !vm.isPlaying) {
+                Button(onClick = vm::play, enabled = !vm.isPlaying && !vm.isPdfImporting) {
                     Text("▶ Lecture")
                 }
                 OutlinedButton(onClick = vm::togglePause, enabled = vm.isPlaying) {
@@ -143,7 +194,7 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
             )
             PianoKeyboard(
                 activeMidis = vm.activeMidis,
-                enabled = !vm.isPlaying,
+                enabled = !vm.isPlaying && !vm.isPdfImporting,
                 onKeyPress = vm::previewMidi,
             )
 
@@ -155,7 +206,7 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                 singleLine = true,
                 label = { Text("Nom du morceau") },
             )
-            Button(onClick = vm::saveSong) {
+            Button(onClick = vm::saveSong, enabled = !vm.isPdfImporting) {
                 Text("Enregistrer sur l'appareil")
             }
 
@@ -197,7 +248,8 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                     "• Altérations : # ou b, ex. Fa#4, Sib4\n" +
                     "• Durée en temps : :0.5, :1, :2, :4\n" +
                     "• Accord : [Do4 Mi4 Sol4]:2\n" +
-                    "• Silence : Pause:1"
+                    "• Silence : Pause:1\n" +
+                    "• PDF : une note sans octave est interprétée en octave 4"
             )
 
             Text(
