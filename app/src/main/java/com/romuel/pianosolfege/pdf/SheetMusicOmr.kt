@@ -287,6 +287,7 @@ internal object SheetMusicOmr {
             while (x0 <= endX) {
                 val current = headDensity(ink, width, height, staff, x0, targetY.roundToInt(), rx, ry)
                 val localPeak = previous >= HEAD_DENSITY_THRESHOLD &&
+                    previousX >= bounds.first + spacing * 6.0f &&
                     previous >= previousPrevious && previous > current
 
                 if (localPeak) {
@@ -541,7 +542,7 @@ internal object SheetMusicOmr {
     private const val STAFF_LINE_COVERAGE = 0.23f
     private const val MIN_STAFF_SPACING = 5f
     private const val MAX_STAFF_SPACING = 90f
-    private const val HEAD_DENSITY_THRESHOLD = 0.16f
+    private const val HEAD_DENSITY_THRESHOLD = 0.27f
     private const val FILLED_HEAD_THRESHOLD = 0.38f
     private const val MIN_STAFF_STEP = -6
     private const val MAX_STAFF_STEP = 14
