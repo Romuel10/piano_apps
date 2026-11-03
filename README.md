@@ -100,7 +100,7 @@ Le workflow GitHub Actions compile également `:app:assembleDebug` avec Gradle 8
 La nouvelle interface suit le parcours **importer → vérifier/corriger → jouer**.
 
 - **PDF imprimé** : l'analyse est locale (sans téléversement vers un serveur). Le moteur OMR repère les portées, estime les hauteurs en clés de sol/fa, distingue plusieurs valeurs de notes et regroupe certains accords. L'OCR du texte (Do/Ré/Mi) reste disponible en secours. Les résultats sont **approximatifs** : comparez avec l'aperçu de la page avant de lancer la lecture.
-- **MusicXML (.musicxml, .xml) / MXL (.mxl)** : import structuré pour une meilleure fidélité des voix indépendantes, silences, durées pointées, tuplets, altérations, accords, liaisons de prolongation et indications de tempo. L'audio polyphonique utilise une synthèse en flux pour garder les différentes durées entre les deux mains.
+- **MusicXML (.musicxml, .xml) / MXL (.mxl)** : import structuré pour une meilleure fidélité des voix indépendantes, silences, durées pointées, tuplets, altérations, armures standard, accords, liaisons de prolongation et changements de tempo. L'audio polyphonique utilise une synthèse en flux pour garder les durées et tempos entre les deux mains.
 - **Éditeur** : insertion rapide de notes/accords/pauses, vérification immédiate de la syntaxe et exemple traditionnel de Frère Jacques. Les morceaux saisis peuvent être enregistrés sur l'appareil.
 
 ### Exemple de PDF testé comme référence de mise au point
