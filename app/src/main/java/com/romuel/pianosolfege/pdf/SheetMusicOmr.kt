@@ -87,6 +87,13 @@ internal object SheetMusicOmr {
             system.staffIndices.forEachIndexed { position, staffIndex ->
                 val staff = staffs[staffIndex]
                 val clef = if (twoStaffPianoSystem && position == 1) Clef.BASS else Clef.TREBLE
+                val previousStaff = system.staffIndices.getOrNull(position - 1)?.let { staffs[it] }
+                val nextStaff = system.staffIndices.getOrNull(position + 1)?.let { staffs[it] }
+                val regionTop = previousStaff?.let { (it.bottom + staff.top) / 2 }
+                    ?: max(0, (staff.top - staff.spacing * 7.5f).roundToInt())
+                val regionBottom = nextStaff?.let { (staff.bottom + it.top) / 2 }
+                    ?: min(height - 1, (staff.bottom + staff.spacing * 4.5f).roundToInt())
+
                 systemCandidates += detectNotes(
                     ink = ink,
                     width = width,
@@ -94,6 +101,8 @@ internal object SheetMusicOmr {
                     staff = staff,
                     staffIndex = staffIndex,
                     clef = clef,
+                    regionTop = regionTop,
+                    regionBottom = regionBottom,
                 )
             }
 
@@ -237,6 +246,8 @@ internal object SheetMusicOmr {
         staff: Staff,
         staffIndex: Int,
         clef: Clef,
+        regionTop: Int,
+        regionBottom: Int,
     ): List<Candidate> {
         val spacing = staff.spacing
         if (spacing < MIN_STAFF_SPACING || spacing > MAX_STAFF_SPACING) return emptyList()
@@ -258,7 +269,7 @@ internal object SheetMusicOmr {
         // Bottom line = staff step 0. Positive steps go upward in diatonic half-spaces.
         for (staffStep in MIN_STAFF_STEP..MAX_STAFF_STEP) {
             val targetY = staff.bottom - staffStep * spacing / 2f
-            if (targetY < 2 || targetY >= height - 2) continue
+            if (targetY < regionTop || targetY > regionBottom || targetY < 2 || targetY >= height - 2) continue
 
             var x0 = startX
             var previousPrevious = 0f
@@ -384,7 +395,6 @@ internal object SheetMusicOmr {
             if (staff.lines.any { abs(y - it) <= lineMask }) continue
             val row = y * width
             for (x in left..right) {
-                // Elliptical window reduces influence from stems at the corners.
                 val nx = (x - centerX).toFloat() / max(1, radiusX)
                 val ny = (y - centerY).toFloat() / max(1, radiusY)
                 if (nx * nx + ny * ny > 1.08f) continue
@@ -441,6 +451,7 @@ internal object SheetMusicOmr {
         val xRadius = max(4, (spacing * 2.4f).roundToInt())
         val yRadius = max(5, (spacing * 3.6f).roundToInt())
         val minimumRun = max(5, (spacing * 1.15f).roundToInt())
+        val maximumRun = max(minimumRun + 1, (spacing * 3.4f).roundToInt())
         val lineMask = max(1, (spacing * 0.10f).roundToInt())
         val xMin = max(0, centerX - xRadius)
         val xMax = min(width - 1, centerX + xRadius)
@@ -461,7 +472,9 @@ internal object SheetMusicOmr {
                     run = 0
                 }
             }
-            if (best >= minimumRun) return true
+            // Very long horizontal runs are much more likely to be a neighbouring
+            // staff line than a beam. This avoids turning quarter notes into eighths.
+            if (best in minimumRun..maximumRun) return true
         }
         return false
     }
