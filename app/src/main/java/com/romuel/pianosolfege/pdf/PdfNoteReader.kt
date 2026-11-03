@@ -170,7 +170,6 @@ class PdfNoteReader(private val context: Context) {
         val desiredScale = 2.2f
         val maxDimension = maxOf(pageWidth, pageHeight).coerceAtLeast(1)
         val cappedScale = min(desiredScale, MAX_RENDER_DIMENSION.toFloat() / maxDimension.toFloat())
-            .coerceAtLeast(1f)
         val width = (pageWidth * cappedScale).toInt().coerceAtLeast(1)
         val height = (pageHeight * cappedScale).toInt().coerceAtLeast(1)
         return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
