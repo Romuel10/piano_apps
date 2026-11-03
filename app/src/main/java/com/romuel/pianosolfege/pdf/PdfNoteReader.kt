@@ -123,7 +123,7 @@ class PdfNoteReader(private val context: Context) {
         )
 
         private val noteRegex = Regex(
-            pattern = "(?i)(?<![\\p{L}\\p{N}])(do|ré|re|mi|fa|sol|la|si|c|d|e|f|g|a|b)\\s*([#♯♭])?\\s*([0-8])?(?:\\s*[:=]\\s*([0-9]+(?:[.,][0-9]+)?))?(?![\\p{L}])"
+            pattern = "(?i)(?<![\\p{L}\\p{N}])(do|ré|re|mi|fa|sol|la|si|c|d|e|f|g|a|b)\\s*([#♯b♭])?\\s*([0-8])?(?:\\s*[:=]\\s*([0-9]+(?:[.,][0-9]+)?))?(?![\\p{L}])"
         )
         private val restRegex = Regex(
             pattern = "(?i)(?<![\\p{L}])(pause|silence|rest)(?:\\s*[:=]\\s*([0-9]+(?:[.,][0-9]+)?))?(?![\\p{L}])"
@@ -149,7 +149,7 @@ class PdfNoteReader(private val context: Context) {
                 val name = canonical[rawName] ?: return@forEach
                 val accidental = when (match.groupValues[2]) {
                     "#", "♯" -> "#"
-                    "♭" -> "b"
+                    "b", "♭" -> "b"
                     else -> ""
                 }
                 val octave = match.groupValues[3].ifBlank { DEFAULT_OCTAVE.toString() }
