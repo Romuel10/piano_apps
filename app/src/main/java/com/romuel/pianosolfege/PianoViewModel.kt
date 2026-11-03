@@ -9,9 +9,12 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.romuel.pianosolfege.audio.PianoEngine
+import com.romuel.pianosolfege.audio.PolyphonicScorePlayer
 import com.romuel.pianosolfege.data.SavedSong
 import com.romuel.pianosolfege.data.SongRepository
 import com.romuel.pianosolfege.music.NoteParser
+import com.romuel.pianosolfege.music.ImportedScore
+import com.romuel.pianosolfege.music.MusicXmlImporter
 import com.romuel.pianosolfege.music.PianoNote
 import com.romuel.pianosolfege.pdf.PdfNoteReader
 import kotlinx.coroutines.CancellationException
@@ -38,6 +41,9 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
     var pdfStatus by mutableStateOf("PDF : prêt à importer")
         private set
 
+    var scoreSource by mutableStateOf<String?>(null)
+        private set
+
     var currentNote by mutableStateOf<String?>(null)
         private set
 
@@ -57,6 +63,8 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     private val engine = PianoEngine(application.applicationContext)
+    private val scorePlayer = PolyphonicScorePlayer()
+    private var importedScore: ImportedScore? = null
     private val repository = SongRepository(application.applicationContext)
     private val pdfReader = PdfNoteReader(application.applicationContext)
     private var playbackJob: Job? = null
@@ -79,6 +87,35 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateInput(value: String) {
         input = value
+        if (importedScore != null) {
+            importedScore = null
+            scoreSource = null
+            message = "Texte modifié : lecture depuis l'éditeur (sans polyphonie MusicXML)."
+        }
+    }
+
+    fun appendToken(token: String) {
+        updateInput(if (input.isBlank()) token else input.trimEnd() + " " + token)
+    }
+
+    fun clearInput() {
+        stop()
+        updateInput("")
+        message = "Éditeur vidé"
+    }
+
+    fun loadFrereJacquesExample() {
+        stop()
+        importedScore = null
+        scoreSource = null
+        bpm = 100
+        songName = "Frère Jacques - exemple"
+        input = """Do4 Ré4 Mi4 Do4  Do4 Ré4 Mi4 Do4
+Mi4 Fa4 Sol4:2  Mi4 Fa4 Sol4:2
+Sol4:0.5 La4:0.5 Sol4:0.5 Fa4:0.5 Mi4 Do4
+Sol4:0.5 La4:0.5 Sol4:0.5 Fa4:0.5 Mi4 Do4
+Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
+        message = "Exemple de la mélodie chargé à 100 BPM (pas une transcription du PDF)."
     }
 
     fun updateBpm(value: Int) {
@@ -89,9 +126,11 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
         songName = value
     }
 
-    fun importPdf(uri: Uri, playAfterImport: Boolean = true) {
+    fun importPdf(uri: Uri, playAfterImport: Boolean = false) {
         pdfJob?.cancel()
         stop()
+        importedScore = null
+        scoreSource = null
         isPdfImporting = true
         pdfStatus = "PDF : analyse OCR + OMR local en cours…"
         message = "Lecture de la partition PDF…"
@@ -114,6 +153,7 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 input = result.playableText
+                scoreSource = "PDF • transcription optique provisoire, à vérifier"
                 result.detectedBpm?.let { bpm = it }
                 songName = result.displayName.substringBeforeLast('.').ifBlank { "PDF importé" }
 
@@ -153,11 +193,67 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun importMusicXml(uri: Uri) {
+        pdfJob?.cancel()
+        stop()
+        isPdfImporting = true
+        pdfStatus = "Import MusicXML : analyse des voix et des mesures…"
+        pdfJob = viewModelScope.launch {
+            try {
+                val score = MusicXmlImporter.read(getApplication<Application>(), uri)
+                importedScore = score
+                input = score.editablePreview
+                bpm = score.bpm
+                songName = score.title
+                scoreSource = "MusicXML • ${score.notes.size} notes • polyphonie conservée"
+                pdfStatus = "MusicXML chargé : ${score.notes.size} notes, tempo ${score.bpm} BPM"
+                message = "La lecture respecte les durées de chaque main. Le texte est un aperçu simplifié ; sa modification désactive la polyphonie exacte."
+                score.warnings.firstOrNull()?.let { message += " • $it" }
+            } catch (_: CancellationException) {
+                throw CancellationException()
+            } catch (error: Exception) {
+                pdfStatus = "Erreur d'import MusicXML"
+                message = error.message ?: "MusicXML non pris en charge."
+            } finally {
+                isPdfImporting = false
+            }
+        }
+    }
+
     fun play() {
-        if (isPlaying) return
+        if (isPlaying || isPdfImporting) return
         previewJob?.cancel()
         previewJob = null
         engine.stop()
+
+        val score = importedScore
+        if (score != null) {
+            playbackJob = viewModelScope.launch {
+                isPlaying = true
+                isPaused = false
+                message = "Lecture polyphonique de ${score.notes.size} notes…"
+                try {
+                    scorePlayer.play(score.notes, bpm, { isPaused }) { active ->
+                        activeMidis = active
+                        currentNote = if (active.isEmpty()) null
+                            else active.joinToString(" + ") { NoteParser.labelForMidi(it) }
+                    }
+                    message = "Lecture MusicXML terminée"
+                } catch (_: CancellationException) {
+                    message = "Lecture arrêtée"
+                    throw CancellationException()
+                } catch (error: Exception) {
+                    message = error.message ?: "Erreur de lecture polyphonique."
+                } finally {
+                    currentNote = null
+                    activeMidis = emptyList()
+                    isPlaying = false
+                    isPaused = false
+                    scorePlayer.stop()
+                }
+            }
+            return
+        }
 
         val parsed = NoteParser.parse(input)
         if (parsed.errors.isNotEmpty()) {
@@ -201,6 +297,7 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
         previewJob?.cancel()
         previewJob = null
         engine.stop()
+        scorePlayer.stop()
         currentNote = null
         activeMidis = emptyList()
         isPlaying = false
@@ -238,11 +335,13 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
         val finalName = songName.trim().ifBlank { "Morceau ${savedSongs.size + 1}" }
         savedSongs = repository.save(finalName, input.trim(), bpm)
         songName = finalName
-        message = "« $finalName » enregistré sur cet appareil"
+        message = if (importedScore != null) "« $finalName » enregistré comme texte simplifié (la polyphonie MusicXML n'est pas sauvegardée)." else "« $finalName » enregistré sur cet appareil"
     }
 
     fun loadSong(song: SavedSong) {
         stop()
+        importedScore = null
+        scoreSource = null
         input = song.content
         bpm = song.bpm
         songName = song.name
