@@ -125,3 +125,21 @@ La lecture des partitions PDF se base désormais sur un **calendrier de notes po
 L'application porte désormais le nom **Piano Partition+** et possède une icône de lanceur en forme de clavier de piano et de clé de sol, avec les mêmes informations d'identité Android qu'avant (`com.romuel.pianosolfege`).
 
 **Mises à jour sans désinstallation :** une configuration de signature pérenne a été préparée. Voir **[SIGNING.md](SIGNING.md)** pour installer une clé privée via les secrets GitHub et générer des APK `piano-partition-plus-release`. Les APK debug sont uniquement destinées aux essais et ne bénéficient pas de garantie de mise à jour sur place. Une transition unique peut être nécessaire depuis l'ancienne version debug.
+
+## Version 1.3 — rythme PDF mesuré, plutôt que deviné
+
+**Correction de la reconnaissance du rythme :**
+
+- détection des barres de mesure verticales sur les deux portées ;
+- prise en compte de la signature rythmique (4/4, 3/4, 6/8), lue par OCR quand possible ou choisie manuellement ;
+- distinction plus robuste des têtes de notes **pleines** (noires/croches) et **creuses** (blanches) et rejet des traits de ligature pris pour de fausses notes ;
+- regroupement des notes dans chaque mesure et synchronisation des mains **à chaque barre de mesure** ;
+- contrôle de la somme des durées pour chaque portée et chaque mesure, avec avertissement précis si la transcription n'atteint pas la mesure attendue ;
+- lecture bloquée en présence d'erreurs rythmiques, sauf validation explicite d'une écoute approximative ;
+- lecture du tempo indiqué sous la forme `♩=100`, `q=100` ou OCR `/=100`, sinon avertissement et réglage BPM manuel à l'unité.
+
+**Référence :** sur le PDF de deux pages *Frère Jacques* fourni en conversation, la partition de la deuxième page est en 4/4 à 100 BPM. Le prototype de détection sur le rendu de cette page a retrouvé huit mesures de quatre temps par portée (deux blanches à la basse, combinaisons de noires/blanches/croches à la mélodie). Cette vérification sur un rendu spécifique **n'est pas un test sur téléphone** et ne garantit pas les autres partitions.
+
+**Limites :** cette OMR locale est heuristique. Elle peut encore mal lire des silences, altérations, notes pointées, triolets, changements de mesure ou plusieurs voix superposées sur la même portée. Un document complexe nécessite un moteur spécialisé de reconnaissance de partition vers MusicXML (par exemple Audiveris), puis validation et correction. Importer directement le MusicXML reste la méthode la plus fiable de cette application.
+
+La branche `main` conserve `com.romuel.pianosolfege` et le système de signature release pérenne de `SIGNING.md`. Évitez les APK debug si vous souhaitez conserver les mises à jour sans réinstallation.
