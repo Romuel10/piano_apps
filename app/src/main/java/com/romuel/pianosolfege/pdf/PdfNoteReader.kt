@@ -21,6 +21,12 @@ import kotlin.coroutines.suspendCoroutine
 import kotlin.math.min
 
 class PdfNoteReader(private val context: Context) {
+    enum class RecognitionMode {
+        SOLFEGE_TEXT,
+        SHEET_MUSIC_OMR,
+        NONE,
+    }
+
     data class Result(
         val displayName: String,
         val rawText: String,
@@ -28,6 +34,10 @@ class PdfNoteReader(private val context: Context) {
         val detectedNotes: Int,
         val pageCount: Int,
         val detectedBpm: Int?,
+        val mode: RecognitionMode,
+        val detectedStaffs: Int = 0,
+        val confidence: Float = 0f,
+        val warnings: List<String> = emptyList(),
     )
 
     suspend fun read(
@@ -44,6 +54,12 @@ class PdfNoteReader(private val context: Context) {
                 require(total > 0) { "Le PDF ne contient aucune page." }
 
                 val raw = StringBuilder()
+                val omrPlayable = StringBuilder()
+                val omrWarnings = linkedSetOf<String>()
+                var omrNotes = 0
+                var omrEvents = 0
+                var omrStaffs = 0
+                var omrConfidenceWeighted = 0f
                 val pagesToRead = min(total, MAX_PAGES)
 
                 for (index in 0 until pagesToRead) {
@@ -57,26 +73,76 @@ class PdfNoteReader(private val context: Context) {
                             val matrix = Matrix().apply { setScale(scale, scale) }
                             page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
 
+                            // OCR text remains useful for PDFs that literally contain
+                            // Do/Ré/Mi or C/D/E note names and for tempo annotations.
                             val text = recognize(recognizer, bitmap)
                             if (text.isNotBlank()) {
                                 if (raw.isNotEmpty()) raw.append('\n')
                                 raw.append(text)
                             }
+
+                            // In parallel, inspect the rendered score itself. If real
+                            // five-line staves are found, this result takes priority.
+                            val omr = SheetMusicOmr.analyze(bitmap)
+                            if (omr.playableText.isNotBlank()) {
+                                if (omrPlayable.isNotEmpty()) omrPlayable.append(' ')
+                                omrPlayable.append(omr.playableText)
+                            }
+                            omrNotes += omr.detectedNotes
+                            omrEvents += omr.detectedEvents
+                            omrStaffs += omr.detectedStaffs
+                            if (omr.detectedEvents > 0) {
+                                omrConfidenceWeighted += omr.confidence * omr.detectedEvents
+                            }
+                            omrWarnings += omr.warnings
                         } finally {
                             bitmap.recycle()
                         }
                     }
                 }
 
-                val normalized = SolfegeOcrNormalizer.convert(raw.toString())
-                Result(
-                    displayName = displayName(uri),
-                    rawText = raw.toString(),
-                    playableText = normalized.playableText,
-                    detectedNotes = normalized.detectedNotes,
-                    pageCount = pagesToRead,
-                    detectedBpm = normalized.bpm,
-                )
+                val textResult = SolfegeOcrNormalizer.convert(raw.toString())
+                val omrConfidence = if (omrEvents == 0) 0f else omrConfidenceWeighted / omrEvents
+                val useSheetOmr = omrStaffs > 0 && omrNotes >= MIN_OMR_NOTES && omrPlayable.isNotBlank()
+                val useText = textResult.detectedNotes > 0 && textResult.playableText.isNotBlank()
+
+                when {
+                    useSheetOmr -> Result(
+                        displayName = displayName(uri),
+                        rawText = raw.toString(),
+                        playableText = omrPlayable.toString(),
+                        detectedNotes = omrNotes,
+                        pageCount = pagesToRead,
+                        detectedBpm = textResult.bpm,
+                        mode = RecognitionMode.SHEET_MUSIC_OMR,
+                        detectedStaffs = omrStaffs,
+                        confidence = omrConfidence,
+                        warnings = omrWarnings.toList(),
+                    )
+
+                    useText -> Result(
+                        displayName = displayName(uri),
+                        rawText = raw.toString(),
+                        playableText = textResult.playableText,
+                        detectedNotes = textResult.detectedNotes,
+                        pageCount = pagesToRead,
+                        detectedBpm = textResult.bpm,
+                        mode = RecognitionMode.SOLFEGE_TEXT,
+                    )
+
+                    else -> Result(
+                        displayName = displayName(uri),
+                        rawText = raw.toString(),
+                        playableText = "",
+                        detectedNotes = 0,
+                        pageCount = pagesToRead,
+                        detectedBpm = textResult.bpm,
+                        mode = RecognitionMode.NONE,
+                        detectedStaffs = omrStaffs,
+                        confidence = omrConfidence,
+                        warnings = omrWarnings.toList(),
+                    )
+                }
             }
         } finally {
             recognizer.close()
@@ -194,5 +260,6 @@ class PdfNoteReader(private val context: Context) {
     companion object {
         private const val MAX_PAGES = 30
         private const val MAX_RENDER_DIMENSION = 2400
+        private const val MIN_OMR_NOTES = 2
     }
 }
