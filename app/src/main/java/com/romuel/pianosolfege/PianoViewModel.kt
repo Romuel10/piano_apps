@@ -1,6 +1,7 @@
 package com.romuel.pianosolfege
 
 import android.app.Application
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -12,6 +13,7 @@ import com.romuel.pianosolfege.data.SavedSong
 import com.romuel.pianosolfege.data.SongRepository
 import com.romuel.pianosolfege.music.NoteParser
 import com.romuel.pianosolfege.music.PianoNote
+import com.romuel.pianosolfege.pdf.PdfNoteReader
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -27,6 +29,12 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     var isPaused by mutableStateOf(false)
+        private set
+
+    var isPdfImporting by mutableStateOf(false)
+        private set
+
+    var pdfStatus by mutableStateOf("PDF : prêt à importer")
         private set
 
     var currentNote by mutableStateOf<String?>(null)
@@ -49,8 +57,10 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
 
     private val engine = PianoEngine(application.applicationContext)
     private val repository = SongRepository(application.applicationContext)
+    private val pdfReader = PdfNoteReader(application.applicationContext)
     private var playbackJob: Job? = null
     private var previewJob: Job? = null
+    private var pdfJob: Job? = null
 
     init {
         savedSongs = repository.load()
@@ -76,6 +86,41 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateSongName(value: String) {
         songName = value
+    }
+
+    fun importPdf(uri: Uri, playAfterImport: Boolean = true) {
+        pdfJob?.cancel()
+        stop()
+        isPdfImporting = true
+        pdfStatus = "PDF : analyse OCR en cours…"
+        message = "Lecture du PDF…"
+
+        pdfJob = viewModelScope.launch {
+            try {
+                val result = pdfReader.read(uri)
+                if (result.playableText.isBlank()) {
+                    pdfStatus = "PDF analysé, mais aucune note de solfège textuelle n'a été reconnue."
+                    message = "Si le PDF contient uniquement une portée musicale, il faut un moteur OMR pour reconnaître les symboles de partition."
+                    return@launch
+                }
+
+                input = result.playableText
+                result.detectedBpm?.let { bpm = it }
+                songName = result.displayName.substringBeforeLast('.').ifBlank { "PDF importé" }
+                pdfStatus = "${result.displayName} • ${result.detectedNotes} note(s) détectée(s) sur ${result.pageCount} page(s)"
+                message = "PDF converti en notes${result.detectedBpm?.let { " • tempo $it BPM" } ?: ""}"
+
+                if (playAfterImport) play()
+            } catch (_: CancellationException) {
+                pdfStatus = "Import PDF annulé"
+                throw CancellationException()
+            } catch (error: Exception) {
+                pdfStatus = "Échec de lecture du PDF"
+                message = error.message ?: "Impossible d'analyser ce PDF."
+            } finally {
+                isPdfImporting = false
+            }
+        }
     }
 
     fun play() {
@@ -180,6 +225,7 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        pdfJob?.cancel()
         stop()
         engine.close()
         super.onCleared()
