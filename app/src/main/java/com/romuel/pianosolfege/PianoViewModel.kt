@@ -30,6 +30,9 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
     var bpm by mutableIntStateOf(90)
         private set
 
+    var tempoStatus by mutableStateOf("Tempo manuel / par défaut")
+        private set
+
     var isPlaying by mutableStateOf(false)
         private set
 
@@ -138,6 +141,7 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
         approximatePlaybackApproved = false
         pdfUri = null
         bpm = 100
+        tempoStatus = "100 BPM • exemple Frère Jacques"
         songName = "Frère Jacques - exemple"
         input = """Do4 Ré4 Mi4 Do4  Do4 Ré4 Mi4 Do4
 Mi4 Fa4 Sol4:2  Mi4 Fa4 Sol4:2
@@ -169,6 +173,7 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
 
     fun updateBpm(value: Int) {
         bpm = value.coerceIn(40, 220)
+        tempoStatus = "${bpm} BPM choisis manuellement"
     }
 
     fun updateSongName(value: String) {
@@ -220,7 +225,12 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
 
                 input = result.playableText
                 scoreSource = "PDF • transcription optique provisoire, à vérifier"
-                result.detectedBpm?.let { bpm = it }
+                if (result.detectedBpm != null) {
+                    bpm = result.detectedBpm
+                    tempoStatus = "${bpm} BPM détectés dans le PDF"
+                } else {
+                    tempoStatus = "Tempo non reconnu dans le PDF : règle-le manuellement"
+                }
                 songName = result.displayName.substringBeforeLast('.').ifBlank { "PDF importé" }
 
                 when (result.mode) {
@@ -284,6 +294,7 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
                 importedScore = score
                 input = score.editablePreview
                 bpm = score.bpm
+                tempoStatus = "${bpm} BPM lus dans le MusicXML"
                 songName = score.title
                 scoreSource = "MusicXML • ${score.notes.size} notes • polyphonie conservée"
                 pdfStatus = "MusicXML chargé : ${score.notes.size} notes, tempo ${score.bpm} BPM"
@@ -429,6 +440,7 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
         pdfUri = null
         input = song.content
         bpm = song.bpm
+        tempoStatus = "${bpm} BPM • morceau enregistré"
         songName = song.name
         message = "« ${song.name} » chargé"
     }
