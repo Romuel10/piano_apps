@@ -76,6 +76,14 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
     var scoreSource by mutableStateOf<String?>(null)
         private set
 
+    var canExportAdvancedMusicXml by mutableStateOf(false)
+        private set
+
+    var advancedExportFileName by mutableStateOf("partition.mxl")
+        private set
+
+    private var advancedXmlBytes: ByteArray? = null
+
     var pdfUri by mutableStateOf<Uri?>(null)
         private set
 
@@ -128,6 +136,8 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateInput(value: String) {
         input = value
+        advancedXmlBytes = null
+        canExportAdvancedMusicXml = false
         rhythmWarnings = emptyList()
         approximatePlaybackApproved = false
         if (importedScore != null) {
@@ -212,6 +222,8 @@ Do5:1.5 Pause:0.5 Sol4:2"""
     }
 
     fun importPdf(uri: Uri, playAfterImport: Boolean = false) {
+        advancedXmlBytes = null
+        canExportAdvancedMusicXml = false
         pdfJob?.cancel()
         stop()
         pdfUri = uri
@@ -321,6 +333,8 @@ Do5:1.5 Pause:0.5 Sol4:2"""
     }
 
     fun importAdvancedPdf(uri: Uri) {
+        advancedXmlBytes = null
+        canExportAdvancedMusicXml = false
         pdfJob?.cancel()
         stop()
         pdfUri = uri
@@ -346,6 +360,14 @@ Do5:1.5 Pause:0.5 Sol4:2"""
                 )
                 pdfStatus = "OMR avancée : reconstruction de la partition MusicXML…"
                 val score = MusicXmlImporter.readBytes(xml)
+                advancedXmlBytes = xml
+                canExportAdvancedMusicXml = true
+                advancedExportFileName = score.title
+                    .replace(Regex("[^a-zA-Z0-9_-]"), "_")
+                    .take(45)
+                    .ifBlank { "partition" } +
+                    if (xml.size >= 2 && xml[0] == 0x50.toByte() &&
+                        xml[1] == 0x4B.toByte()) ".mxl" else ".musicxml"
                 importedScore = score
                 input = score.editablePreview
                 bpm = score.bpm
@@ -367,7 +389,28 @@ Do5:1.5 Pause:0.5 Sol4:2"""
         }
     }
 
+    fun exportAdvancedMusicXml(uri: Uri) {
+        val bytes = advancedXmlBytes ?: run {
+            message = "Aucun MusicXML avancé à exporter."
+            return
+        }
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    getApplication<Application>().contentResolver.openOutputStream(uri)?.use {
+                        it.write(bytes)
+                    } ?: error("Impossible d'enregistrer le MusicXML.")
+                }
+                message = "MusicXML exporté : vérifie ou corrige la partition dans un éditeur."
+            } catch (error: Exception) {
+                message = error.message ?: "Échec de l'export MusicXML."
+            }
+        }
+    }
+
     fun importMusicXml(uri: Uri) {
+        advancedXmlBytes = null
+        canExportAdvancedMusicXml = false
         pdfJob?.cancel()
         stop()
         importedScore = null
