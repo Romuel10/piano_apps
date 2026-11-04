@@ -61,3 +61,40 @@ Les sources d'Audiveris sont disponibles à
 https://github.com/Audiveris/audiveris sous **AGPL v3**.
 Les obligations de cette licence s'appliquent à la distribution ou au
 service en réseau du logiciel. Le moteur n'est pas inclus dans l'APK.
+
+
+## Déployer ce service avec Railway (GitHub → HTTPS)
+
+La source se trouve dans le même dépôt que l'application Android :
+https://github.com/Romuel10/piano_apps
+
+Railway gère une adresse HTTPS et fournit le port dynamique via `PORT`.
+Le serveur utilise automatiquement cette variable, sans modifier le code
+ni publier le port `8080` en clair.
+
+1. Dans Railway, créer un projet et ajouter un **service GitHub** avec le dépôt `Romuel10/piano_apps`, branche `main`.
+2. Dans **Settings → Source**, définir **Root Directory = `/omr-server`**. Cette étape est indispensable : le Dockerfile et `server.py` se trouvent dans ce dossier, pas à la racine Android.
+3. Vérifier que le moteur de build est **Dockerfile**. Ne pas essayer de construire le projet Android sur Railway.
+4. Dans **Variables**, définir `OMR_API_TOKEN` avec un secret aléatoire d'au moins 24 caractères (`openssl rand -hex 32` produit 64 caractères). Ne pas commiter cette valeur ni la placer dans la documentation publique.
+5. Dans **Networking**, générer un **Public Domain** HTTPS. Dans **Healthcheck Path**, indiquer `/health`.
+6. Configurer une limite mémoire suffisante pour Audiveris (recommandation initiale : **2 Gio minimum**, à ajuster après mesure) et activer le redémarrage automatique en cas d'échec.
+7. Vérifier `GET https://<domaine>/health` (réponse attendue : `ok`) puis tester un vrai PDF imprimé via `POST /v1/recognize` avec le jeton. Un `GET /health` réussi confirme le serveur HTTP, pas la capacité d'Audiveris à convertir les partitions.
+
+Le domaine public renvoyé par Railway ressemble à `https://nom-du-service.up.railway.app`. **N'utilisez pas cet exemple comme adresse réelle** : seules les valeurs renvoyées par votre projet Railway fonctionnent.
+
+### Utilisation sur Android
+
+Dans **Piano Partition+ → Importer une partition → Reconnaissance avancée PDF (Audiveris)** :
+- Adresse : `https://<domaine-railway>/v1/recognize` (votre domaine réel).
+- Jeton : la valeur de `OMR_API_TOKEN` du service Railway.
+- Cocher le consentement d'envoi, puis sélectionner le PDF.
+
+Le service ne reçoit que les PDF envoyés volontairement. Les fichiers de traitement temporaires sont détruits après chaque appel. **Le jeton reste visible à celui qui l'utilise** : ce mode à jeton partagé est destiné à un déploiement privé, pas à une application publique pour de nombreux utilisateurs. Une future version multi-utilisateurs demandera une authentification personnelle et des quotas.
+
+### Important pour les coûts et les tests
+
+Le conteneur peut consommer beaucoup de mémoire pendant la reconnaissance. Railway est un hébergement facturé selon les ressources et le forfait. Les PDF de 12 Mo maximum sont acceptés et la conversion est interrompue au bout de 180 secondes. Faire au moins un test de conversion complet avant de considérer le service opérationnel.
+
+Pour vérifier sans ordinateur, ouvrir **Railway → Service → Deployments → Logs**. Les erreurs d'installation d'Audiveris et les refus d'authentification sont visibles via les codes HTTP.
+
+Documentation Railway : https://docs.railway.com/builds/dockerfiles et https://docs.railway.com/builds/build-configuration
