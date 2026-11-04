@@ -180,3 +180,23 @@ Le test technique de référence a été effectué sur un rendu local de la page
 **La lecture optique n'est toujours pas universelle :** certaines partitions manuscrites, les armures, les altérations graphiques, les liaisons et les voix complexes peuvent encore être mal reconnues. Le mode MusicXML/MXL reste disponible pour obtenir une transcription musicale plus fiable. Une mesure incohérente est signalée au lieu d'être présumée exacte.
 
 La suite de tests automatisés vérifie désormais l'identification des positions en clés de sol et de fa, les têtes pleines/creuses, et la saisie en solfège sans octave. Les fichiers sources privés de la partition ne sont pas copiés dans le dépôt.
+
+## 2.0 bêta — reconnaissance des partitions complexes
+
+Pour aller au-delà des croches et notes simples, il faut une **conversion professionnelle en MusicXML**. La version 2.0 propose donc trois chemins :
+
+1. **MusicXML / MXL** : import direct de partitions structurées, prises en charge de la polyphonie et des accords, voix indépendantes, durées, silences, liaisons de prolongation, altérations, changement de métrique, reprises simples et première/deuxième fins, ainsi que **changements de tempo indiqués numériquement dans le fichier**. Les fichiers \`score-partwise\` et \`score-timewise\` sont acceptés.
+2. **PDF avancé (Audiveris)** : un bouton optionnel dans Android envoie, **seulement après accord explicite**, le PDF imprimé à un **serveur privé configuré par l'utilisateur**, qui invoque Audiveris 5.11 et renvoie du MusicXML/MXL. L'utilisateur écoute la transcription structurée ou **exporte le MusicXML** pour le corriger dans un éditeur avant lecture. **Le service n'est pas hébergé dans ce dépôt** : son Dockerfile, les tests et les instructions sont dans [omr-server/README.md](omr-server/README.md).
+3. **PDF local sans serveur** : l'ancien algorithme heuristique Android reste disponible hors connexion, mais il **ne constitue pas un lecteur fiable de partitions difficiles**.
+
+**Précision : aucun moteur OMR existant ne garantit tous les types de partitions**, notamment manuscrites, anciennes ou très denses. L'application doit vérifier les notes reconnues, les rythmes et l'interprétation musicale plutôt qu'annoncer « 100 % ». Les règles complexes telles que **Da Capo/Dal Segno, coda, pédale, nuances, rubato et partitions de piano à micro-intervalles** restent des travaux complémentaires. Les reprises classiques et changements de tempo explicites du MusicXML sont désormais respectés ; les indications de tempo purement textuelles sans chiffre ne sont pas encore interprétées automatiquement.
+
+### Confidentialité et déploiement
+
+Le PDF n'est **pas transmis à un serveur OpenAI ou public** par cette fonctionnalité. Il est envoyé uniquement à **l'URL HTTPS que l'utilisateur configure** après une confirmation spécifique. Le jeton est gardé en mémoire pour la session et non sauvegardé. L'adresse du serveur peut être enregistrée localement.
+
+Le service externe est fourni sous forme de code source et d'image Docker **à héberger**. Tant qu'aucun serveur Audiveris n'a été déployé, le bouton de reconnaissance avancée ne peut pas fonctionner. Consultez [omr-server/README.md](omr-server/README.md) pour les étapes de déploiement et les exigences de licence AGPL v3 du moteur.
+
+Le package Android historique \`com.romuel.pianosolfege\` est conservé, ce qui permet aux APK **release** signées avec la même clé et dotées d'un \`versionCode\` plus récent de remplacer les anciennes versions sans effacer les données. Les APK **debug** ne doivent pas être utilisées pour les mises à jour utilisateurs.
+
+Tests : \`gradle :app:testDebugUnitTest :app:assembleDebug\` et \`python3 -m unittest discover -s omr-server/tests -v\`. Un job CI teste également le démarrage d'une image Docker Audiveris.
