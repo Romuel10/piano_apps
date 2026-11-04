@@ -81,13 +81,28 @@ object MusicXmlImporter {
         val warnings = linkedSetOf<String>()
         var bpm = 100
 
+        val templateMeasures = parts.map { it.children("measure") }.maxByOrNull { measures ->
+            measures.sumOf { measure ->
+                measure.children("barline").sumOf { bar ->
+                    bar.children("repeat").size + bar.children("ending").size
+                }
+            }
+        }.orEmpty()
+        val repeatPlan = RepeatPlanner.expand(measureMarkers(templateMeasures))
+        warnings += repeatPlan.warnings
+
         parts.forEachIndexed { partIndex, part ->
             var measureStart = 0.0
             var divisions = 1.0
             var expectedMeasureBeats = 4.0
             val ties = mutableMapOf<String, RawNote>()
 
-            part.children("measure").forEachIndexed { measureIndex, measure ->
+            val sourceMeasures = part.children("measure")
+            val playbackMeasures = repeatPlan.indices.mapNotNull { sourceMeasures.getOrNull(it) }
+            if (playbackMeasures.size != repeatPlan.indices.size) {
+                warnings += "Certaines parties ne possèdent pas toutes les mesures attendues."
+            }
+            playbackMeasures.forEachIndexed { measureIndex, measure ->
                 var cursor = 0.0
                 var lastChordStart = 0.0
                 var furthest = 0.0
@@ -160,10 +175,7 @@ object MusicXmlImporter {
                                 }
                             }
                         }
-                        "barline" -> {
-                            if (element.child("repeat") != null) warnings +=
-                                "Les reprises MusicXML ne sont pas encore déroulées automatiquement."
-                        }
+                        "barline" -> Unit
                     }
                 }
                 // Keep both hands on the same 4/4 (or other) measure grid.
@@ -184,6 +196,41 @@ object MusicXmlImporter {
             editablePreview = preview(notes),
             warnings = warnings.toList(),
         )
+    }
+
+    private fun measureMarkers(measures: List<Element>): List<MeasureMarkings> {
+        var currentEnding = emptySet<Int>()
+        return measures.map { measure ->
+            val barlines = measure.children("barline")
+            val repeats = barlines.flatMap { it.children("repeat") }
+            val endings = barlines.flatMap { it.children("ending") }
+            endings.filter { it.getAttribute("type") == "start" }.forEach { ending ->
+                currentEnding = ending.getAttribute("number")
+                    .split(",", " ", "-")
+                    .mapNotNull { it.toIntOrNull() }
+                    .toSet()
+            }
+            // Some exporters put "stop" without a matching "start".
+            val applicable = if (currentEnding.isNotEmpty()) currentEnding else
+                endings.flatMap { it.getAttribute("number").split(",", " ") }
+                    .mapNotNull { it.toIntOrNull() }.toSet()
+            val backward = repeats.firstOrNull {
+                it.getAttribute("direction") == "backward"
+            }
+            val marker = MeasureMarkings(
+                forwardRepeat = repeats.any { it.getAttribute("direction") == "forward" },
+                backwardRepeatTimes = backward?.getAttribute("times")
+                    ?.toIntOrNull()?.takeIf { it > 0 } ?: if (backward != null) 2 else null,
+                endingPasses = applicable,
+            )
+            if (endings.any {
+                    it.getAttribute("type") == "stop" ||
+                        it.getAttribute("type") == "discontinue"
+                }) {
+                currentEnding = emptySet()
+            }
+            marker
+        }
     }
 
     private fun pitchMidi(pitch: Element): Int? {
