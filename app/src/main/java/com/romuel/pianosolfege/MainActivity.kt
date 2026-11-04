@@ -33,6 +33,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -54,6 +55,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -85,6 +87,21 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun PianoApp(vm: PianoViewModel = viewModel()) {
     val context = LocalContext.current
+    var showAdvancedOmr by remember { mutableStateOf(false) }
+    var consentUpload by remember { mutableStateOf(false) }
+    val advancedPdfPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null && consentUpload) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            vm.importAdvancedPdf(uri)
+            consentUpload = false
+        }
+    }
     val pdfPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -154,6 +171,56 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                             onClick = { xmlPicker.launch(arrayOf("*/*")) },
                             enabled = !vm.isPdfImporting && !vm.isPlaying,
                         ) { Text("MusicXML / MXL") }
+                    }
+                    OutlinedButton(
+                        onClick = { showAdvancedOmr = !showAdvancedOmr },
+                        enabled = !vm.isPdfImporting,
+                    ) {
+                        Text(if (showAdvancedOmr) "Masquer la reconnaissance avancée"
+                            else "Reconnaissance avancée PDF (Audiveris)")
+                    }
+                    if (showAdvancedOmr) {
+                        Text(
+                            "Pour les partitions imprimées complexes : un serveur Audiveris privé doit être déployé séparément. Le moteur n'est pas hébergé par défaut.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        OutlinedTextField(
+                            value = vm.advancedServerUrl,
+                            onValueChange = vm::updateAdvancedServerUrl,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Adresse HTTPS du serveur OMR privé") },
+                            placeholder = { Text("https://votre-serveur.example/v1/recognize") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = vm.advancedToken,
+                            onValueChange = vm::updateAdvancedToken,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Jeton d'accès (non sauvegardé)") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true,
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = consentUpload,
+                                onCheckedChange = { consentUpload = it },
+                            )
+                            Text(
+                                "J'accepte d'envoyer ce PDF au serveur HTTPS que j'ai configuré.",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        Button(
+                            onClick = { advancedPdfPicker.launch(arrayOf("application/pdf")) },
+                            enabled = !vm.isPdfImporting && !vm.isPlaying &&
+                                consentUpload && vm.advancedServerUrl.isNotBlank() &&
+                                vm.advancedToken.isNotBlank(),
+                        ) { Text("Choisir le PDF et lancer l'OMR avancée") }
+                        Text(
+                            "Aucun PDF n'est envoyé sans cette confirmation. La conversion ne garantit pas l'absence d'erreurs ; vérifie le résultat MusicXML.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                     Text(
                         vm.pdfStatus,
