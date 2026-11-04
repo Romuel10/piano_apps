@@ -147,10 +147,12 @@ internal object SheetMusicOmr {
             val events = clusterByOnset(systemCandidates, max(5f, spacing * 0.95f))
 
             events.forEach { chord ->
-                val midis = chord.map { it.midi }.distinct().sorted()
-                if (midis.isEmpty()) return@forEach
-
+                val midis = chord.map { it.midi }.filter { it >= 21 }.distinct().sorted()
                 val beats = chord.minOfOrNull { it.beats } ?: 1f
+                if (midis.isEmpty()) {
+                    output += "Pause:${formatBeats(beats)}"
+                    return@forEach
+                }
                 val labels = midis.map(NoteParser::labelForMidi)
                 output += if (labels.size == 1) {
                     "${labels.first()}:${formatBeats(beats)}"
@@ -409,8 +411,6 @@ internal object SheetMusicOmr {
             }
         }
 
-        if (raw.isEmpty()) return raw
-
         // The same head can score on two neighbouring pitch positions and multiple nearby X scan steps. Keep the
         // stronger one unless they are spatially separated enough to be a true second.
         val accepted = mutableListOf<Candidate>()
@@ -425,13 +425,32 @@ internal object SheetMusicOmr {
         val readings = RhythmGlyphReader(
             ink, width, height, staff.lines, spacing,
         ).recognize(ordered.map { GlyphHead(it.x.roundToInt(), it.y.roundToInt(), it.filled) })
-        return ordered.mapIndexed { index, head ->
+        val notes = ordered.mapIndexed { index, head ->
             val rhythm = readings[index]
             head.copy(
                 beats = rhythm.beats,
                 score = ((head.score + rhythm.confidence) / 2f).coerceIn(0f, 1f),
             )
         }
+        val rests = SimpleRestReader(
+            ink, width, height, staff.lines, spacing,
+        ).detect(
+            left = startX,
+            right = endX,
+            headXs = notes.map { it.x.roundToInt() },
+        ).map { rest ->
+            // MIDI -1 is a silent duration, not an audio note.
+            Candidate(
+                x = rest.x.toFloat(),
+                y = staff.top + spacing * 1.5f,
+                midi = -1,
+                beats = rest.beats,
+                score = rest.confidence,
+                staffIndex = staffIndex,
+                filled = false,
+            )
+        }
+        return (notes + rests).sortedBy { it.x }
     }
 
     private fun staffHorizontalBounds(
