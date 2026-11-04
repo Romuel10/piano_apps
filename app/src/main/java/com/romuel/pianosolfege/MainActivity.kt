@@ -257,6 +257,10 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                             onClick = vm::loadFrereJacquesExample,
                             enabled = !vm.isPdfImporting,
                         ) { Text("Exemple Frère Jacques") }
+                        OutlinedButton(
+                            onClick = vm::loadRhythmDemo,
+                            enabled = !vm.isPdfImporting && !vm.isPlaying,
+                        ) { Text("Tester les rythmes") }
                         TextButton(onClick = vm::clearInput) { Text("Effacer") }
                     }
                     vm.scoreSource?.let {
@@ -275,6 +279,10 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                         },
                     )
                     Text(
+                        "Figures rythmiques : ronde 4 • blanche 2 • noire 1 • croche 0,5 • double-croche 0,25 • triple-croche 0,125 temps. Un point ajoute la moitié de la durée.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
                         "Ajouter rapidement",
                         style = MaterialTheme.typography.labelMedium,
                     )
@@ -284,7 +292,9 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                     ) {
                         listOf(
                             "Do4", "Ré4", "Mi4", "Fa4", "Sol4", "La4", "Si4",
-                            "Do5", "Pause:1", "[Do4 Mi4 Sol4]:2",
+                            "Do5", "Do4:0.5", "Do4:0.25", "Do4:1.5",
+                            "Pause:1", "Pause:0.5", "Pause:0.25",
+                            "[Do4 Mi4 Sol4]:2",
                         ).forEach { token ->
                             OutlinedButton(
                                 onClick = { vm.appendToken(token) },
