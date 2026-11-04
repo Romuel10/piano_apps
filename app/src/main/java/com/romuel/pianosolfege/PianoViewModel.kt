@@ -2,6 +2,7 @@ package com.romuel.pianosolfege
 
 import android.app.Application
 import android.net.Uri
+import android.graphics.pdf.PdfRenderer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -18,7 +19,10 @@ import com.romuel.pianosolfege.music.ScoreMeter
 import com.romuel.pianosolfege.music.MusicXmlImporter
 import com.romuel.pianosolfege.music.PianoNote
 import com.romuel.pianosolfege.pdf.PdfNoteReader
+import com.romuel.pianosolfege.pdf.AdvancedOmrClient
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -43,6 +47,16 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     var pdfStatus by mutableStateOf("PDF : prêt à importer")
+        private set
+
+    var advancedServerUrl by mutableStateOf(
+        application.getSharedPreferences("omr_settings", 0)
+            .getString("endpoint", "").orEmpty(),
+    )
+        private set
+
+    // The secret is NEVER saved to preferences or included in the repository.
+    var advancedToken by mutableStateOf("")
         private set
 
     var meter by mutableStateOf(ScoreMeter(4, 4))
@@ -290,6 +304,63 @@ Do5:1.5 Pause:0.5 Sol4:2"""
             } catch (error: Exception) {
                 pdfStatus = "Échec de lecture du PDF"
                 message = error.message ?: "Impossible d'analyser ce PDF."
+            } finally {
+                isPdfImporting = false
+            }
+        }
+    }
+
+    fun updateAdvancedServerUrl(value: String) {
+        advancedServerUrl = value.trim()
+        getApplication<Application>().getSharedPreferences("omr_settings", 0)
+            .edit().putString("endpoint", advancedServerUrl).apply()
+    }
+
+    fun updateAdvancedToken(value: String) {
+        advancedToken = value
+    }
+
+    fun importAdvancedPdf(uri: Uri) {
+        pdfJob?.cancel()
+        stop()
+        pdfUri = uri
+        pdfPageCount = 0
+        pdfPageIndex = 0
+        importedScore = null
+        scoreSource = null
+        rhythmWarnings = emptyList()
+        approximatePlaybackApproved = false
+        isPdfImporting = true
+        pdfStatus = "OMR avancée : envoi du PDF à votre serveur privé…"
+        message = "Le PDF sera analysé par Audiveris sur le serveur que tu as configuré."
+
+        pdfJob = viewModelScope.launch {
+            try {
+                pdfPageCount = withContext(Dispatchers.IO) {
+                    getApplication<Application>().contentResolver.openFileDescriptor(uri, "r")
+                        ?.use { descriptor -> PdfRenderer(descriptor).use { it.pageCount } } ?: 0
+                }
+                pdfPageIndex = if (pdfPageCount > 1) 1 else 0
+                val xml = AdvancedOmrClient.recognize(
+                    getApplication<Application>(), uri, advancedServerUrl, advancedToken,
+                )
+                pdfStatus = "OMR avancée : reconstruction de la partition MusicXML…"
+                val score = MusicXmlImporter.readBytes(xml)
+                importedScore = score
+                input = score.editablePreview
+                bpm = score.bpm
+                tempoStatus = "${bpm} BPM de la partition MusicXML"
+                songName = score.title
+                scoreSource = "OMR Audiveris → MusicXML • ${score.notes.size} notes • voix simultanées"
+                pdfStatus = "Transcription avancée terminée : ${score.notes.size} notes"
+                message = "Vérifie les notes, les rythmes et les reprises : même Audiveris peut se tromper."
+                score.warnings.firstOrNull()?.let { message += " • $it" }
+            } catch (_: CancellationException) {
+                pdfStatus = "Import avancé annulé"
+                throw CancellationException()
+            } catch (error: Exception) {
+                pdfStatus = "OMR avancée impossible"
+                message = error.message ?: "Vérifie le serveur HTTPS et la partition."
             } finally {
                 isPdfImporting = false
             }
