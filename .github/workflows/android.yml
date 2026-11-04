@@ -134,6 +134,46 @@ jobs:
           done
           docker logs piano-omr-ci
           exit 1
+      - name: End-to-end recognition of a public-domain piano score
+        run: |
+          curl --fail --location --retry 2 --max-time 40 \
+            -o "$RUNNER_TEMP/score.pdf" \
+            "https://www.mutopiaproject.org/ftp/BeethovenLv/WoO59/fur_Elise_WoO59/fur_Elise_WoO59-let.pdf"
+          python3 -m pip install --quiet pypdf
+          python3 - <<'PY'
+          import os
+          from pypdf import PdfReader, PdfWriter
+          source = os.path.join(os.environ["RUNNER_TEMP"], "score.pdf")
+          output = os.path.join(os.environ["RUNNER_TEMP"], "first-page.pdf")
+          reader = PdfReader(source)
+          writer = PdfWriter()
+          writer.add_page(reader.pages[0])
+          with open(output, "wb") as target:
+              writer.write(target)
+          print("One score page prepared for OMR smoke test.")
+          PY
+          curl --fail --show-error --silent --max-time 225 \
+            -H "Authorization: Bearer ci-test-secret-token-with-32-chars" \
+            -H "Content-Type: application/pdf" \
+            --data-binary @"$RUNNER_TEMP/first-page.pdf" \
+            -o "$RUNNER_TEMP/recognized.mxl" \
+            http://127.0.0.1:18080/v1/recognize
+          python3 - <<'PY'
+          import os, io, zipfile
+          from pathlib import Path
+          response = Path(os.environ["RUNNER_TEMP"]) / "recognized.mxl"
+          raw = response.read_bytes()
+          with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+              xml = b"".join(
+                  archive.read(name) for name in archive.namelist()
+                  if name.lower().endswith((".xml", ".musicxml"))
+                  and not name.lower().startswith("meta-inf/")
+              )
+          assert b"score-partwise" in xml or b"score-timewise" in xml, "OMR did not return a score"
+          assert xml.count(b"<note>") >= 8, "Too few notes recognized"
+          print("PDF to MusicXML recognized", xml.count(b"<note>"), "notes.")
+          PY
+
       - name: Stop test container
         if: always()
         run: docker rm -f piano-omr-ci || true
