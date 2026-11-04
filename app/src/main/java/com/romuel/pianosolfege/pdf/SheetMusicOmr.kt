@@ -749,16 +749,9 @@ internal object SheetMusicOmr {
         return clusters
     }
 
-    private fun midiForStaffStep(clef: Clef, step: Int): Int {
-        // C=0, D=1 ... B=6. Treble bottom line = E4; bass bottom line = G2.
-        val baseLetter = if (clef == Clef.TREBLE) 2 else 4
-        val baseOctave = if (clef == Clef.TREBLE) 4 else 2
-        val absoluteDiatonic = baseOctave * 7 + baseLetter + step
-        val octave = Math.floorDiv(absoluteDiatonic, 7)
-        val letter = Math.floorMod(absoluteDiatonic, 7)
-        val semitone = NATURAL_SEMITONES[letter]
-        return (octave + 1) * 12 + semitone
-    }
+    private fun midiForStaffStep(clef: Clef, step: Int): Int =
+        if (clef == Clef.TREBLE) StaffPitchMapper.treble(step)
+        else StaffPitchMapper.bass(step)
 
     private fun formatBeats(value: Float): String = when {
         abs(value - 0.5f) < 0.01f -> "0.5"
