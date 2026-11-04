@@ -63,8 +63,8 @@ class PolyphonicScorePlayer {
             )
         }.sortedBy { it.startSec }
         val lastSecond = scheduled.maxOf { it.endSec }
-        require(lastSecond < 10 * 60) {
-            "La partition dépasse la limite de 10 minutes du lecteur."
+        require(lastSecond < 30 * 60) {
+            "La partition dépasse la limite de 30 minutes du lecteur."
         }
         val totalFrames = (lastSecond * sampleRate).toLong()
         val bufferFrames = 2048
