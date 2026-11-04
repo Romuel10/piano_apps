@@ -115,7 +115,7 @@ internal object SheetMusicOmr {
                 val regionBottom = nextStaff?.let { (staff.bottom + it.top) / 2 }
                     ?: min(height - 1, (staff.bottom + staff.spacing * 4.5f).roundToInt())
 
-                systemCandidates += detectNotes(
+                systemCandidates += detectNotesByShape(
                     ink = ink,
                     width = width,
                     height = height,
@@ -124,6 +124,7 @@ internal object SheetMusicOmr {
                     clef = clef,
                     regionTop = regionTop,
                     regionBottom = regionBottom,
+                    skipTimeSignature = systemIndex == 0,
                 )
             }
 
@@ -311,6 +312,83 @@ internal object SheetMusicOmr {
             index += 1
         }
         return result
+    }
+
+    /**
+     * Separate the task into two independent recognizers:
+     * 1. find compact printed oval heads and quantize their Y to a staff step;
+     * 2. read stem/beam/flag/dot geometry to determine duration.
+     *
+     * The original horizontal-density scanner confused staff/clef ink with
+     * notes, and is deliberately NOT used as a fallback when shapes are absent.
+     */
+    private fun detectNotesByShape(
+        ink: ByteArray,
+        width: Int,
+        height: Int,
+        staff: Staff,
+        staffIndex: Int,
+        clef: Clef,
+        regionTop: Int,
+        regionBottom: Int,
+        skipTimeSignature: Boolean,
+    ): List<Candidate> {
+        val spacing = staff.spacing
+        val bounds = staffHorizontalBounds(ink, width, height, staff)
+        val skip = if (skipTimeSignature) 8.3f else 5.3f
+        val startX = max(
+            bounds.first + (spacing * skip).roundToInt(),
+            (width * 0.06f).roundToInt(),
+        ).coerceIn(0, width - 1)
+        val endX = min(bounds.second - (spacing * 0.40f).roundToInt(), width - 1)
+        if (endX - startX < spacing * 3f) return emptyList()
+
+        val top = max(regionTop, (staff.top - spacing * 4.8f).roundToInt())
+            .coerceIn(0, height - 1)
+        val bottom = min(regionBottom, (staff.bottom + spacing * 4f).roundToInt())
+            .coerceIn(top, height - 1)
+
+        val heads = RasterStaffPitchDetector(ink, width, height)
+            .detect(staff.lines, startX, endX, top, bottom)
+            .filter { midiForStaffStep(clef, it.step) in 21..108 }
+
+        val readings = RhythmGlyphReader(
+            ink, width, height, staff.lines, spacing,
+        ).recognize(heads.map { GlyphHead(it.x, it.y, it.filled) })
+
+        val candidates = heads.mapIndexed { index, head ->
+            val duration = readings[index]
+            Candidate(
+                x = head.x.toFloat(),
+                y = head.y.toFloat(),
+                midi = midiForStaffStep(clef, head.step),
+                beats = duration.beats,
+                score = (head.confidence * 0.7f + duration.confidence * 0.3f)
+                    .coerceIn(0f, 1f),
+                staffIndex = staffIndex,
+                filled = head.filled,
+            )
+        }.toMutableList()
+
+        val rests = SimpleRestReader(
+            ink, width, height, staff.lines, spacing,
+        ).detect(
+            left = startX,
+            right = endX,
+            headXs = heads.map { it.x },
+        )
+        for (rest in rests) {
+            candidates += Candidate(
+                x = rest.x.toFloat(),
+                y = (staff.top + spacing * 1.5f),
+                midi = -1,
+                beats = rest.beats,
+                score = rest.confidence,
+                staffIndex = staffIndex,
+                filled = false,
+            )
+        }
+        return candidates.sortedBy { it.x }
     }
 
     private fun detectNotes(
