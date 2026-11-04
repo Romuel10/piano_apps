@@ -114,6 +114,11 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
             vm.importPdf(uri, playAfterImport = false)
         }
     }
+    val exportMusicXmlPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { destination ->
+        if (destination != null) vm.exportAdvancedMusicXml(destination)
+    }
     val xmlPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -221,6 +226,16 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                             "Aucun PDF n'est envoyé sans cette confirmation. La conversion ne garantit pas l'absence d'erreurs ; vérifie le résultat MusicXML.",
                             style = MaterialTheme.typography.bodySmall,
                         )
+                    }
+                    if (vm.canExportAdvancedMusicXml) {
+                        OutlinedButton(
+                            onClick = {
+                                exportMusicXmlPicker.launch(vm.advancedExportFileName)
+                            },
+                            enabled = !vm.isPdfImporting && !vm.isPlaying,
+                        ) {
+                            Text("Exporter le MusicXML pour corriger la partition")
+                        }
                     }
                     Text(
                         vm.pdfStatus,
