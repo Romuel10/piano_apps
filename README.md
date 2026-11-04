@@ -166,3 +166,17 @@ Les notes peuvent se suivre à la croche ou à la double-croche tout en conserva
 **Limites et prudence :** les silhouettes imprimées ne sont pas toujours lisibles par simples règles de pixels, surtout en basse résolution. Les **soupirs**, **demi-soupirs**, **quarts de soupir** et autres silences à fanions, les liaisons de prolongation entre mesures, les triolets et les changements de voix ne sont *pas* garantis par le détecteur PDF. L'import MusicXML/MXL reste disponible et plus fidèle pour ces cas. Des mesures incohérentes sont signalées au lieu d'être déclarées correctes. Une réussite des tests synthétiques **ne démontre pas** une lecture parfaite de n'importe quel PDF ou scan manuscrit.
 
 Le fichier PDF personnel de référence n'est pas placé dans le dépôt.
+
+## v1.5 — Reconnaissance de Do / Ré / Mi et des hauteurs sur les portées
+
+Cette version répare deux problèmes différents :
+
+**Saisie texte :** on peut maintenant jouer directement `Do Ré Mi Fa Sol La Si` (ainsi qu'une seule note `Do`, sans obligation de préciser l'octave). L'octave par défaut est la 4. Les notes anglaises `C D E F G A B` sont aussi acceptées. On peut préciser une durée, ex. `Do:0.5`, ou un accord `[Do Mi Sol]:2`.
+
+**PDF sur portée :** l'ancien système recherchait un pic de noir à une position théorique, ce qui confondait parfois notes, clés et lignes. La nouvelle première étape recherche les **têtes de notes ovales réellement imprimées** : elle soustrait les longs traits horizontaux, réunit les contours des têtes creuses, élimine les traits fins, puis associe les centres obtenus à une position diatonique. Une deuxième étape lit les hampes, barres et points pour estimer la durée. Les deux portées d'un piano restent synchronisées dans la timeline.
+
+Le test technique de référence a été effectué sur un rendu local de la page 2 du PDF *Frère Jacques* fourni pendant le développement. Les 8 groupes de notes de la première ligne ont été retrouvés en clé de sol comme **Do4 Ré4 Mi4 Do4 / Do4 Ré4 Mi4 Do4**, et les notes de la main gauche en clé de fa comme **Do3 Sol3 / Do3 Sol3** (deux blanches par mesure). Les autres systèmes du document ont également servi à comparer les positions de notes. Ce test sur image ne remplace pas une validation de la version APK sur un vrai téléphone.
+
+**La lecture optique n'est toujours pas universelle :** certaines partitions manuscrites, les armures, les altérations graphiques, les liaisons et les voix complexes peuvent encore être mal reconnues. Le mode MusicXML/MXL reste disponible pour obtenir une transcription musicale plus fiable. Une mesure incohérente est signalée au lieu d'être présumée exacte.
+
+La suite de tests automatisés vérifie désormais l'identification des positions en clés de sol et de fa, les têtes pleines/creuses, et la saisie en solfège sans octave. Les fichiers sources privés de la partition ne sont pas copiés dans le dépôt.
