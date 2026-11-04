@@ -25,6 +25,7 @@ data class ImportedScore(
     val title: String,
     val editablePreview: String,
     val warnings: List<String>,
+    val tempoChanges: List<TempoChange> = emptyList(),
 )
 
 /**
@@ -79,7 +80,9 @@ object MusicXmlImporter {
 
         val raw = mutableListOf<RawNote>()
         val warnings = linkedSetOf<String>()
+        val tempoChanges = mutableListOf<TempoChange>()
         var bpm = 100
+        var hasInitialTempo = false
 
         val templateMeasures = parts.map { it.children("measure") }.maxByOrNull { measures ->
             measures.sumOf { measure ->
@@ -126,7 +129,17 @@ object MusicXmlImporter {
                             val fromMetronome = element.child("direction-type")
                                 ?.child("metronome")?.childText("per-minute")?.toDoubleOrNull()
                             (fromSound ?: fromMetronome)?.takeIf { it in 30.0..300.0 }?.let {
-                                bpm = it.roundToInt().coerceIn(40, 220)
+                                val selectedBpm = it.roundToInt().coerceIn(40, 220)
+                                val offsetBeats = (element.childText("offset")?.toDoubleOrNull()
+                                    ?: 0.0) / divisions
+                                tempoChanges += TempoChange(
+                                    (measureStart + cursor + offsetBeats).coerceAtLeast(0.0),
+                                    selectedBpm,
+                                )
+                                if (!hasInitialTempo) {
+                                    bpm = selectedBpm
+                                    hasInitialTempo = true
+                                }
                             }
                         }
                         "backup" -> {
@@ -195,6 +208,7 @@ object MusicXmlImporter {
             title = title,
             editablePreview = preview(notes),
             warnings = warnings.toList(),
+            tempoChanges = tempoChanges.sortedBy { it.beat }.distinctBy { it.beat },
         )
     }
 
