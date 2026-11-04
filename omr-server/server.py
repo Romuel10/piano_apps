@@ -114,6 +114,6 @@ if __name__ == "__main__":
     if len(token) < 24:
         raise SystemExit("Configurer OMR_API_TOKEN avec au moins 24 caractères aléatoires.")
     bind = os.environ.get("OMR_LISTEN", "127.0.0.1")
-    port = int(os.environ.get("OMR_PORT", "8080"))
+    port = int(os.environ.get("PORT") or os.environ.get("OMR_PORT", "8080"))
     print("Service OMR privé en attente (protéger par HTTPS/TLS en amont).", flush=True)
     ThreadingHTTPServer((bind, port), Handler).serve_forever()
