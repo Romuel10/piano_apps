@@ -171,7 +171,7 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                         Button(
                             onClick = { pdfPicker.launch(arrayOf("application/pdf")) },
                             enabled = !vm.isPdfImporting && !vm.isPlaying,
-                        ) { Text("Importer PDF") }
+                        ) { Text("PDF local (expérimental)") }
                         OutlinedButton(
                             onClick = { xmlPicker.launch(arrayOf("*/*")) },
                             enabled = !vm.isPdfImporting && !vm.isPlaying,
@@ -226,6 +226,15 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                             "Aucun PDF n'est envoyé sans cette confirmation. La conversion ne garantit pas l'absence d'erreurs ; vérifie le résultat MusicXML.",
                             style = MaterialTheme.typography.bodySmall,
                         )
+                        TextButton(onClick = {
+                            context.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("https://github.com/Romuel10/piano_apps/blob/main/omr-server/README.md"),
+                                ),
+                            )
+                        }) { Text("Guide pour installer le serveur Audiveris") }
+
                     }
                     if (vm.canExportAdvancedMusicXml) {
                         OutlinedButton(
