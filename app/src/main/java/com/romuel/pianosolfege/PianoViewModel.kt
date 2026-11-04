@@ -371,7 +371,9 @@ Do5:1.5 Pause:0.5 Sol4:2"""
                 importedScore = score
                 input = score.editablePreview
                 bpm = score.bpm
-                tempoStatus = "${bpm} BPM de la partition MusicXML"
+                tempoStatus = if (score.tempoChanges.size > 1) {
+                    "$bpm BPM initiaux • ${score.tempoChanges.size} indications de tempo dans la partition"
+                } else "$bpm BPM lus dans le MusicXML"
                 songName = score.title
                 scoreSource = "OMR Audiveris → MusicXML • ${score.notes.size} notes • voix simultanées"
                 pdfStatus = "Transcription avancée terminée : ${score.notes.size} notes"
@@ -425,7 +427,9 @@ Do5:1.5 Pause:0.5 Sol4:2"""
                 importedScore = score
                 input = score.editablePreview
                 bpm = score.bpm
-                tempoStatus = "${bpm} BPM lus dans le MusicXML"
+                tempoStatus = if (score.tempoChanges.size > 1) {
+                    "$bpm BPM initiaux • ${score.tempoChanges.size} indications de tempo dans la partition"
+                } else "$bpm BPM lus dans le MusicXML"
                 songName = score.title
                 scoreSource = "MusicXML • ${score.notes.size} notes • polyphonie conservée"
                 pdfStatus = "MusicXML chargé : ${score.notes.size} notes, tempo ${score.bpm} BPM"
