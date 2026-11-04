@@ -20,7 +20,7 @@ class SolfegeInputTest {
     @Test fun understandsInternationalNotationAndAccidentals() {
         val result = NoteParser.parse("C4 D E F#4 Sib3 Fa♯4 Ré♭5")
         assertTrue(result.errors.toString(), result.errors.isEmpty())
-        assertEquals(listOf(60, 62, 64, 66, 70, 66, 73), result.notes.map { it.midis.single() })
+        assertEquals(listOf(60, 62, 64, 66, 58, 66, 73), result.notes.map { it.midis.single() })
     }
 
     @Test fun notesWithoutOctavesRetainDurationsAndChords() {
