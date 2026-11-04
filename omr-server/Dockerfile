@@ -2,7 +2,7 @@ FROM ubuntu:24.04
 ARG AUDIVERIS_VERSION=5.11.0
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl python3 xvfb xauth tesseract-ocr tesseract-ocr-eng \
+    ca-certificates curl python3 xvfb xauth ghostscript poppler-utils tesseract-ocr tesseract-ocr-eng \
     libgtk-3-0t64 fontconfig fonts-dejavu-core libfreetype6 libglib2.0-0 libgl1 \
     && rm -rf /var/lib/apt/lists/*
 # The official Audiveris .deb includes a bundled JRE.
