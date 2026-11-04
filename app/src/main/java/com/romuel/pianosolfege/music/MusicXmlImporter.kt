@@ -47,6 +47,9 @@ object MusicXmlImporter {
         parseBytes(data)
     }
 
+    suspend fun readBytes(data: ByteArray): ImportedScore =
+        withContext(Dispatchers.Default) { parseBytes(data) }
+
     /** Also used by JVM tests with in-memory MusicXML fixtures. */
     internal fun parseBytes(data: ByteArray): ImportedScore {
         val xmlData = if (data.size >= 2 && data[0] == 0x50.toByte() && data[1] == 0x4B.toByte()) {
