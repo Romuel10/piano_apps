@@ -42,7 +42,7 @@ def convert(pdf: bytes, *, binary=None):
             # Only extract recognizable CLI/Java failure signatures for diagnostics.
             output = completed.stdout.decode("utf-8", errors="replace")
             patterns = (
-                r"(?i)(?:java\\.lang\\.[A-Za-z0-9.$]+(?:Exception|Error))",
+                r"(?i)(?:java\.lang\.[A-Za-z0-9.$]+(?:Exception|Error))",
                 r"(?i)(?:NoClassDefFoundError|UnsatisfiedLinkError|OutOfMemoryError)",
                 r"(?i)(?:Permission denied|No such file or directory|not found|Unable to access jarfile)",
                 r"(?i)(?:error opening display|Xvfb failed|xvfb-run: error|Could not find or load main class)",
@@ -131,5 +131,19 @@ if __name__ == "__main__":
         raise SystemExit("Configurer OMR_API_TOKEN avec au moins 24 caractères aléatoires.")
     bind = os.environ.get("OMR_LISTEN", "127.0.0.1")
     port = int(os.environ.get("PORT") or os.environ.get("OMR_PORT", "8080"))
+    if os.environ.get("OMR_DIAGNOSE_STARTUP") == "1":
+        try:
+            diag = subprocess.run(
+                [os.environ.get("AUDIVERIS_BIN", "/opt/audiveris/bin/Audiveris"), "-help"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60,
+                stdin=subprocess.DEVNULL, check=False,
+            )
+            print(f"Audiveris startup CLI exit={diag.returncode}", flush=True)
+            if diag.returncode != 0:
+                lines = diag.stdout.decode("utf-8", errors="replace").splitlines()
+                # This is the built-in -help command, with no private PDF data.
+                print("Audiveris startup CLI output: " + " | ".join(lines[-20:])[:1500], flush=True)
+        except (OSError, subprocess.TimeoutExpired) as err:
+            print(f"Audiveris startup CLI problem: {type(err).__name__}", flush=True)
     print("Service OMR privé en attente (protéger par HTTPS/TLS en amont).", flush=True)
     ThreadingHTTPServer((bind, port), Handler).serve_forever()
