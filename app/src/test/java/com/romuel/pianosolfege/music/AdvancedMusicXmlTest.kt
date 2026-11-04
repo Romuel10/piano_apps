@@ -79,4 +79,22 @@ class AdvancedMusicXmlTest {
         assertTrue(score.notes.any { it.midi == 60 && it.durationBeats < 1 })
         assertTrue(score.notes.any { it.midi == 48 && it.durationBeats == 2.0 })
     }
+
+    @Test fun timewiseScoresAreConvertedToPartwiseForPianoPlayback() {
+        val xml = """
+            <score-timewise version="4.0">
+              <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+              <measure number="1"><part id="P1">
+                <attributes><divisions>1</divisions></attributes>
+                <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration></note>
+              </part></measure>
+              <measure number="2"><part id="P1">
+                <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration></note>
+              </part></measure>
+            </score-timewise>
+        """.trimIndent()
+        val score = MusicXmlImporter.parseBytes(xml.toByteArray())
+        assertEquals(listOf(60, 67), score.notes.map { it.midi })
+        assertEquals(listOf(0.0, 4.0), score.notes.map { it.startBeats })
+    }
 }
