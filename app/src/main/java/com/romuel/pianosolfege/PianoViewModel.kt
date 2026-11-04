@@ -151,6 +151,23 @@ Do4 Sol3 Do4:2  Do4 Sol3 Do4:2"""
         message = "Exemple de la mélodie chargé à 100 BPM (pas une transcription du PDF)."
     }
 
+    fun loadRhythmDemo() {
+        stop()
+        importedScore = null
+        scoreSource = null
+        pdfUri = null
+        rhythmWarnings = emptyList()
+        approximatePlaybackApproved = false
+        bpm = 100
+        tempoStatus = "100 BPM • démonstration"
+        meter = ScoreMeter(4, 4)
+        meterStatus = "4/4 • démonstration"
+        songName = "Démonstration croches et doubles-croches"
+        input = """Do4:1 Ré4:0.5 Mi4:0.5 Fa4:0.25 Sol4:0.25 La4:0.25 Si4:0.25 Do5:1
+Do5:1.5 Pause:0.5 Sol4:2"""
+        message = "Exemple : noire 1, croche 0,5, double-croche 0,25, noire pointée 1,5."
+    }
+
     fun changePdfPage(value: Int) {
         pdfPageIndex = value.coerceIn(0, (pdfPageCount - 1).coerceAtLeast(0))
     }
