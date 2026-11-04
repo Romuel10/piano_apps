@@ -200,3 +200,36 @@ Le service externe est fourni sous forme de code source et d'image Docker **à h
 Le package Android historique \`com.romuel.pianosolfege\` est conservé, ce qui permet aux APK **release** signées avec la même clé et dotées d'un \`versionCode\` plus récent de remplacer les anciennes versions sans effacer les données. Les APK **debug** ne doivent pas être utilisées pour les mises à jour utilisateurs.
 
 Tests : \`gradle :app:testDebugUnitTest :app:assembleDebug\` et \`python3 -m unittest discover -s omr-server/tests -v\`. Un job CI teste également le démarrage d'une image Docker Audiveris.
+
+## Version 2.1 bêta — exemple Canon in D (Pachelbel)
+
+Un PDF comme *Canon in D*, arrangement de Ben Dunnett (deux pages, armure de
+ré majeur à deux dièses, 4/4, main gauche en blanches, main droite en croches,
+doubles-croches et valeurs pointées), **dépasse les capacités du détecteur
+local par pixels**.
+
+Les avertissements du type « Mesure 1 : 1 temps lu / 4 attendus » signifient
+que **des symboles ont été manqués**, pas que la partition est incorrecte.
+Changer le bouton 3/4, 4/4 ou 6/8 ne crée pas les notes manquantes.
+
+La nouvelle interface présente directement **Reconnaissance avancée PDF
+(Audiveris)**, préconfigure l'adresse du serveur privé Railway déjà déployé,
+demande toujours le jeton de session et le consentement explicite d'envoi,
+et propose de **relancer la reconnaissance sur le PDF déjà ouvert**.
+Un échec OMR s'affiche à proximité de l'import avec le message d'erreur
+du serveur, plutôt que seulement en bas de l'écran.
+
+Le serveur essaie le PDF directement, puis, en cas d'échec, le **convertit
+en TIFF multipage à 300 ppp via Ghostscript** et relance Audiveris.
+Cette deuxième tentative conserve les deux pages dans un seul document,
+afin que la transcription MusicXML puisse conserver les deux mains.
+
+La CI vérifie désormais la reconnaissance PDF vers MusicXML avec une
+partition publique de Beethoven mise à disposition par le Mutopia Project.
+Cela teste le *moteur réel* et pas seulement son démarrage.
+Aucun PDF personnel ni la partition Ben Dunnett fournie par l'utilisateur
+n'a été publié dans le dépôt.
+
+**Limite :** même un OMR spécialisé peut se tromper sur une partition imprimée
+complexe. La transcription doit être vérifiée, puis exportée en MusicXML pour
+correction si nécessaire. **Ce mode ne promet pas une lecture universelle**.
