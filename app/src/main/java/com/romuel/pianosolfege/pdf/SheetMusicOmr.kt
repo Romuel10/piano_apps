@@ -57,6 +57,7 @@ internal object SheetMusicOmr {
         val beats: Float,
         val score: Float,
         val staffIndex: Int,
+        val filled: Boolean,
     )
 
     private data class SystemGroup(
@@ -376,13 +377,13 @@ internal object SheetMusicOmr {
                         max(1, (spacing * 0.20f).roundToInt()),
                     )
                     val stem = hasStem(ink, width, height, previousX, y, spacing)
-                    val beam = stem && hasBeam(ink, width, height, staff, previousX, y, spacing)
                     // A solid notehead stays dark in the center on BOTH sides
                     // of the staff/ledger line. Thin ledger strokes inside
                     // hollow heads should not make them look like quarters.
                     val filled = hasSolidCore(ink, width, height, previousX, y, spacing)
+                    // Provisional value; beam/flag counts and augmentation
+                    // dots are determined together after all heads are found.
                     val beats = when {
-                        filled && beam -> 0.5f
                         filled -> 1f
                         stem -> 2f
                         else -> 4f
@@ -396,6 +397,7 @@ internal object SheetMusicOmr {
                             beats = beats,
                             score = previous.coerceIn(0f, 1f),
                             staffIndex = staffIndex,
+                            filled = filled,
                         )
                     }
                 }
@@ -419,7 +421,17 @@ internal object SheetMusicOmr {
             }
             if (!duplicate) accepted += candidate
         }
-        return accepted.sortedBy { it.x }
+        val ordered = accepted.sortedBy { it.x }
+        val readings = RhythmGlyphReader(
+            ink, width, height, staff.lines, spacing,
+        ).recognize(ordered.map { GlyphHead(it.x.roundToInt(), it.y.roundToInt(), it.filled) })
+        return ordered.mapIndexed { index, head ->
+            val rhythm = readings[index]
+            head.copy(
+                beats = rhythm.beats,
+                score = ((head.score + rhythm.confidence) / 2f).coerceIn(0f, 1f),
+            )
+        }
     }
 
     private fun staffHorizontalBounds(
