@@ -37,7 +37,7 @@ internal object AdvancedOmrClient {
             val apiKey = token.trim()
             require(apiKey.isNotBlank()) { "Ajoute le jeton du serveur OMR privé." }
 
-            val pdf = context.contentResolver.openInputStream(uri)?.use(::readLimited)
+            val pdf = context.contentResolver.openInputStream(uri)?.use { readLimited(it) }
                 ?: error("Impossible d'ouvrir le PDF.")
             require(pdf.size >= 8 && pdf.take(1024).toByteArray()
                 .toString(Charsets.ISO_8859_1).contains("%PDF-")) {
@@ -67,7 +67,7 @@ internal object AdvancedOmrClient {
                 require("musicxml" in mime || "octet-stream" in mime || "zip" in mime) {
                     "Le serveur n'a pas retourné du MusicXML."
                 }
-                conn.inputStream.use(::readLimited)
+                conn.inputStream.use { readLimited(it) }
             } finally {
                 conn.disconnect()
             }
