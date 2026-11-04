@@ -89,6 +89,23 @@ class MeasuredRhythmTest {
         assertEquals(3.0, result.notes.maxOf { it.startBeats + it.durationBeats }, 0.001)
     }
 
+    @Test fun visualHalfRestDelaysNextSoundByTwoBeats() {
+        val events = listOf(
+            StaffEvent(0, 0, 110f, -1, 2.0, 12f),
+            StaffEvent(0, 0, 180f, 60, 1.0, 12f),
+            StaffEvent(0, 0, 240f, 62, 1.0, 12f),
+            StaffEvent(0, 1, 110f, 48, 2.0, 12f),
+            StaffEvent(0, 1, 180f, 55, 2.0, 12f),
+        )
+        val rhythm = StaffTimeline.analyze(
+            events, mapOf(0 to listOf(95f, 295f)), ScoreMeter(4, 4),
+        )
+        assertTrue(rhythm.valid)
+        assertEquals(4, rhythm.notes.size)
+        assertEquals(2.0, rhythm.notes.first { it.midi == 60 }.startBeats, 0.001)
+        assertEquals(3.0, rhythm.notes.first { it.midi == 62 }.startBeats, 0.001)
+    }
+
     @Test fun finalDoubleBarlineIsNotAnExtraMeasure() {
         val events = listOf(
             StaffEvent(0, 0, 120f, 60, 4.0, 12f),
