@@ -1,5 +1,7 @@
 """Private Audiveris PDF -> MusicXML service; no data is retained."""
 import hmac
+import io
+import zipfile
 import re
 import os
 from pathlib import Path
@@ -17,58 +19,136 @@ class RecognitionError(Exception):
     pass
 
 
+def _diagnostic(stdout: bytes, returncode: int, stage: str):
+    """Log only categories of errors, never user titles, lyrics or PDF content."""
+    output = stdout.decode("utf-8", errors="replace")
+    checks = (
+        ("memory", r"(?i)OutOfMemoryError|Java heap space|Cannot allocate memory"),
+        ("PDF engine", r"(?i)Ghostscript|gs: not found|PDFImageReader|PDF renderer"),
+        ("native dependency", r"(?i)UnsatisfiedLinkError|NoClassDefFoundError"),
+        ("image parsing", r"(?i)Cannot load input|ImageIO|Unsupported image"),
+        ("permission", r"(?i)Permission denied|AccessDeniedException"),
+        ("OMR processing", r"(?i)ProcessingCancellationException|StepException|BookException"),
+    )
+    kinds = [label for label, expression in checks if re.search(expression, output)]
+    print(
+        f"Audiveris stage={stage} exit={returncode}; "
+        f"error_classes={','.join(kinds) or 'unspecified'}",
+        flush=True,
+    )
+
+
+def _exported_file(target: Path):
+    candidates = [
+        *target.rglob("*.mxl"),
+        *target.rglob("*.musicxml"),
+        *target.rglob("*.xml"),
+    ]
+    # Avoid picking up any metadata XML that is not actually a score.
+    candidates = [file for file in candidates if "META-INF" not in file.parts]
+    candidates.sort(key=lambda file: (file.suffix.lower() != ".mxl", -file.stat().st_size))
+    for candidate in candidates:
+        if candidate.stat().st_size > MAX_OUTPUT:
+            continue
+        data = candidate.read_bytes()
+        if candidate.suffix.lower() == ".mxl":
+            try:
+                with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                    music = [
+                        name for name in archive.namelist()
+                        if name.lower().endswith((".xml", ".musicxml"))
+                        and not name.lower().startswith("meta-inf/")
+                    ]
+                    if any(
+                        b"<score-partwise" in archive.read(name)[:40000]
+                        or b"<score-timewise" in archive.read(name)[:40000]
+                        for name in music[:4]
+                    ):
+                        return data, "application/vnd.recordare.musicxml"
+            except (zipfile.BadZipFile, OSError):
+                continue
+        if b"<score-partwise" in data[:40000] or b"<score-timewise" in data[:40000]:
+            return data, "application/vnd.recordare.musicxml+xml"
+    return None
+
+
+def _render_pdf_as_tiff(source: Path, target: Path):
+    # A 300-DPI, multipage TIFF preserves ALL the piano systems in ONE score.
+    # Audiveris reads multi-page TIFF as a book; splitting into separate PNG
+    # documents would lose the flow between the pages.
+    info = subprocess.run(
+        ["pdfinfo", str(source)], stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, timeout=12, check=False,
+    )
+    if info.returncode != 0:
+        raise RecognitionError("Le PDF semble illisible ou endommagé.")
+    match = re.search(r"(?m)^Pages:\s*(\d+)", info.stdout.decode("ascii", errors="replace"))
+    if not match:
+        raise RecognitionError("Impossible de compter les pages du PDF.")
+    pages = int(match.group(1))
+    if pages < 1 or pages > 20:
+        raise RecognitionError("Limite du service : 20 pages par conversion.")
+    rendered = subprocess.run(
+        [
+            "gs", "-q", "-dSAFER", "-dBATCH", "-dNOPAUSE", "-dUseCropBox",
+            "-sDEVICE=tiffg4", "-r300", "-dNumRenderingThreads=1",
+            "-sOutputFile=" + str(target), str(source),
+        ],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL, timeout=40, check=False,
+    )
+    if rendered.returncode != 0 or not target.is_file() or target.stat().st_size == 0:
+        raise RecognitionError("Impossible de convertir les pages PDF en images pour Audiveris.")
+    if target.stat().st_size > 85 * 1024 * 1024:
+        raise RecognitionError("La partition contient trop d'images à analyser.")
+    print(f"PDF preprocessed as {pages} TIFF page(s) at 300 dpi", flush=True)
+
+
 def convert(pdf: bytes, *, binary=None):
-    if len(pdf) > MAX_UPLOAD or not pdf[:1024].lstrip().startswith(b"%PDF-"):
+    if len(pdf) > MAX_UPLOAD or len(pdf) < 8 or not pdf[:1024].lstrip().startswith(b"%PDF-"):
         raise ValueError("PDF invalide ou trop volumineux (12 Mo maximum).")
     binary = binary or os.environ.get("AUDIVERIS_BIN", "/opt/audiveris/bin/Audiveris")
     with tempfile.TemporaryDirectory(prefix="piano-omr-") as folder:
         root = Path(folder)
         source = root / "score.pdf"
-        target = root / "out"
-        target.mkdir()
         source.write_bytes(pdf)
-        try:
-            completed = subprocess.run(
-                [binary, "-batch", "-export", "-output", str(target), "--", str(source)],
-                cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, timeout=180, check=False,
-            )
-        except subprocess.TimeoutExpired as err:
-            raise RecognitionError("Délai OMR dépassé (3 minutes).") from err
-        except OSError as err:
-            raise RecognitionError("Moteur Audiveris indisponible.") from err
-        if completed.returncode != 0:
-            # Do not print PDF contents, title or the full verbose OMR transcript.
-            # Only extract recognizable CLI/Java failure signatures for diagnostics.
-            output = completed.stdout.decode("utf-8", errors="replace")
-            patterns = (
-                r"(?i)(?:java\.lang\.[A-Za-z0-9.$]+(?:Exception|Error))",
-                r"(?i)(?:NoClassDefFoundError|UnsatisfiedLinkError|OutOfMemoryError)",
-                r"(?i)(?:Permission denied|No such file or directory|not found|Unable to access jarfile)",
-                r"(?i)(?:error opening display|Xvfb failed|xvfb-run: error|Could not find or load main class)",
-            )
-            found = []
-            for pattern in patterns:
-                for match in re.finditer(pattern, output):
-                    found.append(match.group(0))
-            details = ", ".join(dict.fromkeys(found))[:400] or "aucune signature d'erreur reconnue"
-            print(f"Audiveris rc={completed.returncode}, diagnostics: {details}", flush=True)
-            raise RecognitionError("Audiveris n'a pas réussi à lire la partition.")
-        files = [*target.rglob("*.mxl"), *target.rglob("*.musicxml"), *target.rglob("*.xml")]
-        if not files:
-            raise RecognitionError("Aucun résultat MusicXML produit.")
-        files.sort(key=lambda f: (f.suffix.lower() != ".mxl", -f.stat().st_size))
-        chosen = files[0]
-        if chosen.stat().st_size > MAX_OUTPUT:
-            raise RecognitionError("MusicXML trop volumineux.")
-        data = chosen.read_bytes()
-        if chosen.suffix.lower() == ".mxl":
-            if not data.startswith(b"PK"):
-                raise RecognitionError("Archive MXL invalide.")
-            return data, "application/vnd.recordare.musicxml"
-        if b"<score-partwise" not in data[:20000]:
-            raise RecognitionError("MusicXML non pris en charge.")
-        return data, "application/vnd.recordare.musicxml+xml"
+
+        def attempt(input_file: Path, stage: str, timeout: int):
+            dest = root / stage
+            dest.mkdir()
+            try:
+                completed = subprocess.run(
+                    [binary, "-batch", "-export", "-output", str(dest), "--", str(input_file)],
+                    cwd=root, stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    timeout=timeout, check=False,
+                )
+            except subprocess.TimeoutExpired:
+                print(f"Audiveris stage={stage} timed out", flush=True)
+                return None
+            except OSError as error:
+                raise RecognitionError("Le moteur Audiveris est indisponible.") from error
+            result = _exported_file(dest)
+            if completed.returncode != 0 or result is None:
+                _diagnostic(completed.stdout, completed.returncode, stage)
+            return result
+
+        # Try native PDF first. Fall back to multipage TIFF if the native
+        # PDF importer fails or creates no valid MusicXML score.
+        result = attempt(source, "pdf", 85)
+        if result is not None:
+            return result
+
+        raster = root / "score.tif"
+        _render_pdf_as_tiff(source, raster)
+        result = attempt(raster, "raster", 105)
+        if result is not None:
+            return result
+
+        raise RecognitionError(
+            "Audiveris n'a pas pu reconnaître suffisamment de symboles "
+            "pour produire du MusicXML. Vérifiez la netteté de la partition."
+        )
 
 
 class Handler(BaseHTTPRequestHandler):
