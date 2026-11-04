@@ -119,6 +119,9 @@ jobs:
         uses: actions/checkout@v4
       - name: Build Audiveris 5.11 container
         run: docker build --pull -t piano-omr-ci ./omr-server
+      - name: Verify Audiveris command-line engine works in container
+        run: timeout 75s docker run --rm --entrypoint /usr/local/bin/audiveris-headless piano-omr-ci -help
+
       - name: Start private recognition API
         run: |
           docker run -d --rm --name piano-omr-ci -p 127.0.0.1:18080:8080 \
