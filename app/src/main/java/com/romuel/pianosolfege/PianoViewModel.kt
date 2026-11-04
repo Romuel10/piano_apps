@@ -416,7 +416,7 @@ Do5:1.5 Pause:0.5 Sol4:2"""
                 isPaused = false
                 message = "Lecture polyphonique de ${score.notes.size} notes…"
                 try {
-                    scorePlayer.play(score.notes, bpm, { isPaused }) { active ->
+                    scorePlayer.play(score.notes, bpm, { isPaused }, score.tempoChanges, score.bpm) { active ->
                         activeMidis = active
                         currentNote = if (active.isEmpty()) null
                             else active.joinToString(" + ") { NoteParser.labelForMidi(it) }
