@@ -1,5 +1,6 @@
 """Private Audiveris PDF -> MusicXML service; no data is retained."""
 import hmac
+import re
 import os
 from pathlib import Path
 import subprocess
@@ -37,6 +38,21 @@ def convert(pdf: bytes, *, binary=None):
         except OSError as err:
             raise RecognitionError("Moteur Audiveris indisponible.") from err
         if completed.returncode != 0:
+            # Do not print PDF contents, title or the full verbose OMR transcript.
+            # Only extract recognizable CLI/Java failure signatures for diagnostics.
+            output = completed.stdout.decode("utf-8", errors="replace")
+            patterns = (
+                r"(?i)(?:java\\.lang\\.[A-Za-z0-9.$]+(?:Exception|Error))",
+                r"(?i)(?:NoClassDefFoundError|UnsatisfiedLinkError|OutOfMemoryError)",
+                r"(?i)(?:Permission denied|No such file or directory|not found|Unable to access jarfile)",
+                r"(?i)(?:error opening display|Xvfb failed|xvfb-run: error|Could not find or load main class)",
+            )
+            found = []
+            for pattern in patterns:
+                for match in re.finditer(pattern, output):
+                    found.append(match.group(0))
+            details = ", ".join(dict.fromkeys(found))[:400] or "aucune signature d'erreur reconnue"
+            print(f"Audiveris rc={completed.returncode}, diagnostics: {details}", flush=True)
             raise RecognitionError("Audiveris n'a pas réussi à lire la partition.")
         files = [*target.rglob("*.mxl"), *target.rglob("*.musicxml"), *target.rglob("*.xml")]
         if not files:
