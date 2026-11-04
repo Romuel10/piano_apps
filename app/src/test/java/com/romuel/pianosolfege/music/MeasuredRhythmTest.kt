@@ -106,6 +106,23 @@ class MeasuredRhythmTest {
         assertEquals(3.0, rhythm.notes.first { it.midi == 62 }.startBeats, 0.001)
     }
 
+    @Test fun sixteenSixteenthNotesOccupyOneFourFourMeasure() {
+        val melody = (0 until 16).map { index ->
+            StaffEvent(0, 0, 110f + index * 13f, 60 + index % 4, 0.25, 12f)
+        }
+        val bass = listOf(
+            StaffEvent(0, 1, 110f, 48, 2.0, 12f),
+            StaffEvent(0, 1, 215f, 55, 2.0, 12f),
+        )
+        val rhythm = StaffTimeline.analyze(
+            melody + bass, mapOf(0 to listOf(90f, 335f)), ScoreMeter(4, 4),
+        )
+        assertTrue(rhythm.valid)
+        assertEquals(18, rhythm.notes.size)
+        assertEquals(0.25, rhythm.notes.first { it.midi == 60 }.durationBeats, 0.001)
+        assertEquals(4.0, rhythm.notes.maxOf { it.startBeats + it.durationBeats }, 0.001)
+    }
+
     @Test fun finalDoubleBarlineIsNotAnExtraMeasure() {
         val events = listOf(
             StaffEvent(0, 0, 120f, 60, 4.0, 12f),
