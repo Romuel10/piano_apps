@@ -298,6 +298,6 @@ class PdfNoteReader(private val context: Context) {
     companion object {
         private const val MAX_PAGES = 30
         private const val MAX_RENDER_DIMENSION = 2400
-        private const val MIN_OMR_NOTES = 2
+        private const val MIN_OMR_NOTES = 1
     }
 }
