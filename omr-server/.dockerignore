@@ -1,0 +1,6 @@
+__pycache__/
+*.pdf
+*.mxl
+*.musicxml
+.env
+private/
