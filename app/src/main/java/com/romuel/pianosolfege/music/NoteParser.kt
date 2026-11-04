@@ -4,8 +4,8 @@ import java.text.Normalizer
 import java.util.Locale
 
 object NoteParser {
-    private val notePattern = Regex("^(do|re|mi|fa|sol|la|si)(#|b)?([0-8])(?::([0-9]+(?:\\.[0-9]+)?))?$")
-    private val bareNotePattern = Regex("^(do|re|mi|fa|sol|la|si)(#|b)?([0-8])$")
+    private val notePattern = Regex("^(do|re|mi|fa|sol|la|si|c|d|e|f|g|a|b)(#|b)?([0-8])?(?::([0-9]+(?:\\.[0-9]+)?))?$")
+    private val bareNotePattern = Regex("^(do|re|mi|fa|sol|la|si|c|d|e|f|g|a|b)(#|b)?([0-8])?$")
     private val restPattern = Regex("^(pause|silence|r)(?::([0-9]+(?:\\.[0-9]+)?))?$")
     private val chordPattern = Regex("^\\[(.+)](?::([0-9]+(?:\\.[0-9]+)?))?$")
     private val tokenPattern = Regex("\\[[^]]+](?::[0-9]+(?:\\.[0-9]+)?)?|[^\\s,;]+")
@@ -18,6 +18,8 @@ object NoteParser {
         "sol" to 7,
         "la" to 9,
         "si" to 11,
+        "c" to 0, "d" to 2, "e" to 4, "f" to 5,
+        "g" to 7, "a" to 9, "b" to 11,
     )
 
     private val displayNames = arrayOf(
@@ -92,7 +94,7 @@ object NoteParser {
 
             val match = notePattern.matchEntire(normalized)
             if (match == null) {
-                errors += "Élément ${index + 1} ($original) invalide. Exemples : Do4, Fa#4, Sib3, Ré4:0.5, [Do4 Mi4 Sol4]:2."
+                errors += "Élément ${index + 1} ($original) invalide. Exemples : Do, Ré, Mi, Fa#4, Sib3, Ré4:0.5, [Do Mi Sol]:2."
                 return@forEachIndexed
             }
 
@@ -125,7 +127,7 @@ object NoteParser {
     private fun midiFromMatch(match: MatchResult): Int {
         val name = match.groupValues[1]
         val accidental = match.groupValues[2]
-        val octave = match.groupValues[3].toInt()
+        val octave = match.groupValues[3].toIntOrNull() ?: 4
 
         var semitone = semitones.getValue(name)
         if (accidental == "#") semitone += 1
@@ -137,6 +139,9 @@ object NoteParser {
     private fun normalize(value: String): String {
         val withoutAccents = Normalizer.normalize(value, Normalizer.Form.NFD)
             .replace(Regex("\\p{Mn}+"), "")
-        return withoutAccents.lowercase(Locale.ROOT).trim()
+        return withoutAccents.lowercase(Locale.ROOT)
+            .replace('♯', '#')
+            .replace('♭', 'b')
+            .trim()
     }
 }
