@@ -67,9 +67,9 @@ object MusicXmlImporter {
             setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
         }
         val document = factory.newDocumentBuilder().parse(ByteArrayInputStream(xmlData))
-        val root = document.documentElement
+        val root = partwise(document.documentElement)
         require(root.tagName.substringAfter(':') == "score-partwise") {
-            "Ce fichier n'est pas une partition MusicXML score-partwise."
+            "Format MusicXML non pris en charge (score-partwise ou score-timewise attendu)."
         }
 
         val title = root.child("work")?.childText("work-title")
@@ -212,6 +212,46 @@ object MusicXmlImporter {
         )
     }
 
+    /** Convert the standard MusicXML score-timewise structure in memory. */
+    private fun partwise(root: Element): Element {
+        if (root.tagName.substringAfter(':') != "score-timewise") return root
+        val doc = root.ownerDocument
+        val partwise = doc.createElement("score-partwise")
+        root.attributes?.let { attrs ->
+            for (i in 0 until attrs.length) {
+                val attribute = attrs.item(i)
+                partwise.setAttribute(attribute.nodeName, attribute.nodeValue)
+            }
+        }
+        root.children().filter { it.tagName.substringAfter(':') != "measure" }
+            .forEach { partwise.appendChild(it.cloneNode(true)) }
+        val parts = linkedMapOf<String, Element>()
+        val ids = root.child("part-list")?.children("score-part")
+            ?.map { it.getAttribute("id") }.orEmpty().filter { it.isNotBlank() }
+        ids.forEach { id ->
+            parts[id] = doc.createElement("part").apply { setAttribute("id", id) }
+        }
+        root.children("measure").forEach { measure ->
+            measure.children("part").forEach { originalPart ->
+                val id = originalPart.getAttribute("id")
+                if (id.isBlank()) return@forEach
+                val target = parts.getOrPut(id) {
+                    doc.createElement("part").apply { setAttribute("id", id) }
+                }
+                val newMeasure = doc.createElement("measure")
+                val attrs = measure.attributes
+                for (i in 0 until attrs.length) {
+                    val attr = attrs.item(i)
+                    newMeasure.setAttribute(attr.nodeName, attr.nodeValue)
+                }
+                originalPart.children().forEach { newMeasure.appendChild(it.cloneNode(true)) }
+                target.appendChild(newMeasure)
+            }
+        }
+        parts.values.forEach(partwise::appendChild)
+        return partwise
+    }
+
     private fun measureMarkers(measures: List<Element>): List<MeasureMarkings> {
         var currentEnding = emptySet<Int>()
         return measures.map { measure ->
@@ -309,6 +349,7 @@ object MusicXmlImporter {
 
     private fun extractMxl(compressed: ByteArray): ByteArray {
         val candidates = mutableListOf<Pair<String, ByteArray>>()
+        var extractedBytes = 0
         ZipInputStream(ByteArrayInputStream(compressed)).use { zip ->
             var entry = zip.nextEntry
             var count = 0
@@ -316,7 +357,9 @@ object MusicXmlImporter {
                 val name = entry.name.replace('\\', '/')
                 if (!entry.isDirectory && !name.startsWith("META-INF/", ignoreCase = true) &&
                     (name.endsWith(".musicxml", true) || name.endsWith(".xml", true))) {
-                    candidates += name to readLimited(zip, MAX_XML_BYTES)
+                    val bytes = readLimited(zip, MAX_XML_BYTES - extractedBytes)
+                    extractedBytes += bytes.size
+                    candidates += name to bytes
                 }
                 zip.closeEntry()
                 entry = zip.nextEntry
