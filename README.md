@@ -143,3 +143,26 @@ L'application porte désormais le nom **Piano Partition+** et possède une icôn
 **Limites :** cette OMR locale est heuristique. Elle peut encore mal lire des silences, altérations, notes pointées, triolets, changements de mesure ou plusieurs voix superposées sur la même portée. Un document complexe nécessite un moteur spécialisé de reconnaissance de partition vers MusicXML (par exemple Audiveris), puis validation et correction. Importer directement le MusicXML reste la méthode la plus fiable de cette application.
 
 La branche `main` conserve `com.romuel.pianosolfege` et le système de signature release pérenne de `SIGNING.md`. Évitez les APK debug si vous souhaitez conserver les mises à jour sans réinstallation.
+
+## v1.4 — Lecture des crochets et des doubles-croches
+
+Le problème signalé était que l'OMR ne différenciait pas le nombre de crochets/barres : une note pleine reliée était toujours classée comme croche. La lecture d'image possède désormais un classifieur de **symboles rythmiques par géométrie**, testable indépendamment de l'interface Android.
+
+| Symbole | Durée en temps de noire | Représentation texte |
+|---|---:|---|
+| Ronde (tête vide sans hampe) | 4 | `Do4:4 |
+| Blanche (tête vide avec hampe) | 2 | `Do4:2 |
+| Noire (tête pleine avec hampe) | 1 | `Do4:1 |
+| Croche (1 barre ou 1 crochet) | 0,5 | `Do4:0.5 |
+| Double-croche (2 barres ou 2 crochets) | 0,25 | `Do4:0.25 |
+| Triple-croche (3 barres ou 3 crochets) | 0,125 | `Do4:0.125 |
+| Point de prolongation | × 1,5 | `Do4:1.5 |
+| Pause de ronde / blanche (rectangle imprimé) | 4 / 2 | `Pause:4 / `Pause:2 |
+
+Les notes peuvent se suivre à la croche ou à la double-croche tout en conservant des durées indépendantes dans les deux mains. Les repos rectangulaires détectés avancent la position temporelle **sans déclencher de son**. L'application vérifie ensuite le total des temps de chaque portée/mesure et avertit si le rythme reconstitué est incohérent. L'écran d'édition dispose maintenant d'un bouton **Tester les rythmes** et de raccourcis pour saisir les durées.
+
+**Contrôles automatisés :** des tests JUnit dessinent des têtes de notes, des hampes, un, deux et trois faisceaux, des crochets isolés, un point de prolongation, ainsi que des silences de ronde/blanche. Des tests supplémentaires vérifient l'alignement des deux mains et le décalage produit par un silence.
+
+**Limites et prudence :** les silhouettes imprimées ne sont pas toujours lisibles par simples règles de pixels, surtout en basse résolution. Les **soupirs**, **demi-soupirs**, **quarts de soupir** et autres silences à fanions, les liaisons de prolongation entre mesures, les triolets et les changements de voix ne sont *pas* garantis par le détecteur PDF. L'import MusicXML/MXL reste disponible et plus fidèle pour ces cas. Des mesures incohérentes sont signalées au lieu d'être déclarées correctes. Une réussite des tests synthétiques **ne démontre pas** une lecture parfaite de n'importe quel PDF ou scan manuscrit.
+
+Le fichier PDF personnel de référence n'est pas placé dans le dépôt.
