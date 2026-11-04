@@ -68,7 +68,9 @@ object StaffTimeline {
                 var onset = 0.0
                 groups(staffEvents).forEach { group ->
                     for (head in group.events.distinctBy { it.midi }) {
-                        result += TimedNote(head.midi, systemOffset + onset, head.beats)
+                        if (head.midi >= 21) {
+                            result += TimedNote(head.midi, systemOffset + onset, head.beats)
+                        }
                     }
                     onset += group.events.maxOf { it.beats }
                 }
@@ -128,11 +130,13 @@ object StaffTimeline {
                     var cursor = 0.0
                     groups(inBar).forEach { group ->
                         group.events.distinctBy { it.midi }.forEach { head ->
-                            notes += TimedNote(
-                                midi = head.midi,
-                                startBeats = offset + cursor,
-                                durationBeats = head.beats.coerceIn(0.125, 16.0),
-                            )
+                            if (head.midi >= 21) {
+                                notes += TimedNote(
+                                    midi = head.midi,
+                                    startBeats = offset + cursor,
+                                    durationBeats = head.beats.coerceIn(0.125, 16.0),
+                                )
+                            }
                         }
                         cursor += group.events.maxOf { it.beats }.coerceIn(0.125, 16.0)
                     }
