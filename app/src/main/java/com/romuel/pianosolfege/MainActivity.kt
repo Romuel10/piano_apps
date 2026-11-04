@@ -273,9 +273,9 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                         minLines = 6,
                         maxLines = 14,
                         label = { Text("Éditeur solfège") },
-                        placeholder = { Text("Do4:1 Ré4:1 Mi4:1 [Do4 Mi4 Sol4]:2") },
+                        placeholder = { Text("Do Ré Mi Fa Sol La Si, ou Do4:0.5 [Do Mi Sol]:2") },
                         supportingText = {
-                            Text("Une note = une durée en temps ; accords entre crochets.")
+                            Text("Do ou Do4 sont acceptés. Sans octave : octave 4. Durées en temps (:1, :0.5, :2).")
                         },
                     )
                     Text(
