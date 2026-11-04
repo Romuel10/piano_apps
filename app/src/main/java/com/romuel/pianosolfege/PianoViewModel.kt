@@ -51,12 +51,15 @@ class PianoViewModel(application: Application) : AndroidViewModel(application) {
 
     var advancedServerUrl by mutableStateOf(
         application.getSharedPreferences("omr_settings", 0)
-            .getString("endpoint", "").orEmpty(),
+            .getString("endpoint", "https://pianoapps-production.up.railway.app/v1/recognize").orEmpty(),
     )
         private set
 
     // The secret is NEVER saved to preferences or included in the repository.
     var advancedToken by mutableStateOf("")
+        private set
+
+    var advancedError by mutableStateOf<String?>(null)
         private set
 
     var meter by mutableStateOf(ScoreMeter(4, 4))
@@ -201,6 +204,10 @@ Do5:1.5 Pause:0.5 Sol4:2"""
         meter = value
         meterManuallySelected = true
         meterStatus = "${value.display} sélectionné manuellement"
+        if (scoreSource?.contains("MusicXML") == true) {
+            message = "Les durées proviennent du MusicXML : changer la métrique ici ne modifie pas ce fichier."
+            return
+        }
         val existingPdf = pdfUri
         if (existingPdf != null) {
             importPdf(existingPdf)
@@ -234,7 +241,8 @@ Do5:1.5 Pause:0.5 Sol4:2"""
         rhythmWarnings = emptyList()
         approximatePlaybackApproved = false
         isPdfImporting = true
-        pdfStatus = "PDF : analyse OCR + OMR local en cours…"
+        advancedError = null
+        pdfStatus = "PDF local (expérimental) : analyse des pixels en cours…"
         message = "Lecture de la partition PDF…"
 
         pdfJob = viewModelScope.launch {
@@ -289,10 +297,10 @@ Do5:1.5 Pause:0.5 Sol4:2"""
                             scoreSource = "PDF • lecture simultanée des mains (OMR à vérifier)"
                         }
                         val confidencePercent = (result.confidence * 100f).roundToInt().coerceIn(0, 100)
-                        pdfStatus = "${result.displayName} • OMR : ${result.detectedNotes} note(s), ${result.measures} mesure(s) • ${meter.display} • indice visuel $confidencePercent% (non calibré)"
+                        pdfStatus = "${result.displayName} • Lecture locale approximative : ${result.detectedNotes} note(s) • ${meter.display} • indice non calibré $confidencePercent%"
                         val warning = result.warnings.firstOrNull()
                         message = buildString {
-                            append("Partition analysée : ${result.rhythmIssues.size} mesure(s)/portée(s) au rythme incohérent • vérifie avant de jouer")
+                            append("L'OMR local a perdu des notes ou des durées. Pour cette partition, utiliser la reconnaissance avancée Audiveris (MusicXML).")
                             result.detectedBpm?.let { append(" • tempo $it BPM") }
                             if (warning != null) append(" • $warning")
                         }
@@ -345,7 +353,8 @@ Do5:1.5 Pause:0.5 Sol4:2"""
         rhythmWarnings = emptyList()
         approximatePlaybackApproved = false
         isPdfImporting = true
-        pdfStatus = "OMR avancée : envoi du PDF à votre serveur privé…"
+        advancedError = null
+        pdfStatus = "Audiveris : conversion du PDF en notes MusicXML…"
         message = "Le PDF sera analysé par Audiveris sur le serveur que tu as configuré."
 
         pdfJob = viewModelScope.launch {
@@ -376,6 +385,9 @@ Do5:1.5 Pause:0.5 Sol4:2"""
                 } else "$bpm BPM lus dans le MusicXML"
                 songName = score.title
                 scoreSource = "OMR Audiveris → MusicXML • ${score.notes.size} notes • voix simultanées"
+                meterStatus = "Partition structurée MusicXML : rythmes et durées lus par Audiveris"
+                meterManuallySelected = false
+                advancedError = null
                 pdfStatus = "Transcription avancée terminée : ${score.notes.size} notes"
                 message = "Vérifie les notes, les rythmes et les reprises : même Audiveris peut se tromper."
                 score.warnings.firstOrNull()?.let { message += " • $it" }
@@ -384,7 +396,8 @@ Do5:1.5 Pause:0.5 Sol4:2"""
                 throw CancellationException()
             } catch (error: Exception) {
                 pdfStatus = "OMR avancée impossible"
-                message = error.message ?: "Vérifie le serveur HTTPS et la partition."
+                advancedError = error.message ?: "Le serveur n'a pas pu transcrire ce PDF."
+                message = "Audiveris : ${advancedError}. Le PDF reste disponible pour réessayer."
             } finally {
                 isPdfImporting = false
             }
