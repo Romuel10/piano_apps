@@ -87,7 +87,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun PianoApp(vm: PianoViewModel = viewModel()) {
     val context = LocalContext.current
-    var showAdvancedOmr by remember { mutableStateOf(false) }
+    var showAdvancedOmr by remember { mutableStateOf(true) }
     var consentUpload by remember { mutableStateOf(false) }
     val advancedPdfPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -161,17 +161,17 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        "PDF imprimé : reconnaissance optique à vérifier. MusicXML / MXL : notes, voix et rythmes structurés pour les morceaux complexes.",
+                        "Pour les partitions de piano complexes comme Canon in D : utiliser Audiveris (reconnaissance avancée). Le lecteur PDF local peut manquer les notes, les croches et les mesures.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Button(
+                        OutlinedButton(
                             onClick = { pdfPicker.launch(arrayOf("application/pdf")) },
                             enabled = !vm.isPdfImporting && !vm.isPlaying,
-                        ) { Text("PDF local (expérimental)") }
+                        ) { Text("PDF local (limité)") }
                         OutlinedButton(
                             onClick = { xmlPicker.launch(arrayOf("*/*")) },
                             enabled = !vm.isPdfImporting && !vm.isPlaying,
@@ -186,7 +186,7 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                     }
                     if (showAdvancedOmr) {
                         Text(
-                            "Pour les partitions imprimées complexes : un serveur Audiveris privé doit être déployé séparément. Le moteur n'est pas hébergé par défaut.",
+                            "Recommandé : Audiveris détecte les notes et les durées, puis renvoie une partition MusicXML. Le serveur privé Piano Partition+ est configuré sur Railway ; sa conversion reste à vérifier sur chaque partition.",
                             style = MaterialTheme.typography.bodySmall,
                         )
                         OutlinedTextField(
@@ -216,12 +216,30 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                                 modifier = Modifier.weight(1f),
                             )
                         }
+                        val canRecognize = !vm.isPdfImporting && !vm.isPlaying &&
+                            consentUpload && vm.advancedServerUrl.isNotBlank() &&
+                            vm.advancedToken.isNotBlank()
                         Button(
-                            onClick = { advancedPdfPicker.launch(arrayOf("application/pdf")) },
-                            enabled = !vm.isPdfImporting && !vm.isPlaying &&
-                                consentUpload && vm.advancedServerUrl.isNotBlank() &&
-                                vm.advancedToken.isNotBlank(),
-                        ) { Text("Choisir le PDF et lancer l'OMR avancée") }
+                            onClick = {
+                                val existingPdf = vm.pdfUri
+                                if (existingPdf != null) {
+                                    vm.importAdvancedPdf(existingPdf)
+                                    consentUpload = false
+                                } else {
+                                    advancedPdfPicker.launch(arrayOf("application/pdf"))
+                                }
+                            },
+                            enabled = canRecognize,
+                        ) {
+                            Text(if (vm.pdfUri != null) "Reconnaître ce PDF avec Audiveris"
+                                else "Choisir le PDF et reconnaître les notes")
+                        }
+                        if (vm.pdfUri != null) {
+                            OutlinedButton(
+                                onClick = { advancedPdfPicker.launch(arrayOf("application/pdf")) },
+                                enabled = canRecognize,
+                            ) { Text("Choisir un autre PDF") }
+                        }
                         Text(
                             "Aucun PDF n'est envoyé sans cette confirmation. La conversion ne garantit pas l'absence d'erreurs ; vérifie le résultat MusicXML.",
                             style = MaterialTheme.typography.bodySmall,
@@ -249,8 +267,20 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                     Text(
                         vm.pdfStatus,
                         style = MaterialTheme.typography.labelMedium,
-                        color = accent,
+                        color = if (vm.advancedError != null) MaterialTheme.colorScheme.error
+                            else accent,
                     )
+                    vm.advancedError?.let { problem ->
+                        Text(
+                            "Détail : $problem",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            "Vérifiez le serveur et le document, puis relancez Audiveris. Le PDF n'a pas été supprimé.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     Text(
                         "Mesure et rythme",
                         style = MaterialTheme.typography.titleSmall,
@@ -260,6 +290,7 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                         vm.meterStatus,
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    if (vm.scoreSource?.contains("MusicXML") != true) {
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -283,10 +314,15 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                         }
                     }
                     Text(
-                        "Si la mesure n'est pas reconnue, choisis-la ici. Modifier la mesure relance l'analyse du PDF.",
+                        "Ces boutons concernent seulement l'analyse PDF locale. Ils ne remplacent pas la lecture des durées des notes.",
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    }
                     if (vm.rhythmWarnings.isNotEmpty()) {
+                        Text(
+                            "Reconnaissance locale incomplète — ce n'est pas une erreur dans ta partition",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                         Text(
                             "Rythme non validé — vérifie les temps de chaque mesure",
                             color = MaterialTheme.colorScheme.error,
@@ -296,6 +332,10 @@ private fun PianoApp(vm: PianoViewModel = viewModel()) {
                             Text(warning, style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error)
                         }
+                        OutlinedButton(
+                            onClick = { showAdvancedOmr = true },
+                            enabled = !vm.isPdfImporting,
+                        ) { Text("Utiliser la reconnaissance avancée Audiveris") }
                         if (!vm.approximatePlaybackApproved) {
                             OutlinedButton(
                                 onClick = vm::approveApproximatePlayback,
