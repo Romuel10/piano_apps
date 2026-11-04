@@ -79,6 +79,8 @@ class PolyphonicScorePlayer {
         var written = 0L
         var wasPaused = false
         var lastProgress = -1L
+        var nextOnsetIndex = 0
+        val currentlySounding = mutableListOf<ScheduledNote>()
         try {
             output.play()
             while (written < totalFrames) {
@@ -98,9 +100,13 @@ class PolyphonicScorePlayer {
                 val frames = min(bufferFrames.toLong(), totalFrames - written).toInt()
                 val firstSecond = written.toDouble() / sampleRate
                 val lastSecondInBlock = (written + frames).toDouble() / sampleRate
-                val active = scheduled.filter {
-                    it.startSec <= lastSecondInBlock && it.endSec >= firstSecond
+                currentlySounding.removeAll { it.endSec < firstSecond }
+                while (nextOnsetIndex < scheduled.size &&
+                    scheduled[nextOnsetIndex].startSec <= lastSecondInBlock) {
+                    currentlySounding += scheduled[nextOnsetIndex]
+                    nextOnsetIndex++
                 }
+                val active = currentlySounding.filter { it.endSec >= firstSecond }
                 val pcm = ShortArray(frames)
                 val norm = sqrt(max(1, active.size).toDouble())
                 for (i in 0 until frames) {
