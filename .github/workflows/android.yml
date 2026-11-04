@@ -107,3 +107,26 @@ jobs:
         uses: actions/checkout@v4
       - name: Verify private Audiveris HTTP bridge
         run: python3 -m unittest discover -s omr-server/tests -v
+
+  omr-container-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build Audiveris 5.11 container
+        run: docker build --pull -t piano-omr-ci ./omr-server
+      - name: Start private recognition API
+        run: |
+          docker run -d --rm --name piano-omr-ci -p 127.0.0.1:18080:8080 \
+            -e OMR_API_TOKEN=ci-test-secret-token-with-32-chars piano-omr-ci
+          for i in $(seq 1 25); do
+            if curl --fail --silent http://127.0.0.1:18080/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs piano-omr-ci
+          exit 1
+      - name: Stop test container
+        if: always()
+        run: docker rm -f piano-omr-ci || true
