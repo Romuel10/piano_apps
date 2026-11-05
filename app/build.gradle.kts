@@ -44,12 +44,18 @@ android {
         targetSdk = 35
         // GitHub run numbers make every distributed build newer than the previous.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(100) ?: 3
-        versionName = "2.1.0-beta"
+        versionName = "2.1.1-beta"
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
     }
 
     buildFeatures {
@@ -80,6 +86,7 @@ dependencies {
     implementation("com.google.mlkit:text-recognition:16.0.1")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.15.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
