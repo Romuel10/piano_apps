@@ -9,9 +9,12 @@ import org.w3c.dom.Node
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.io.StringReader
 import java.util.zip.ZipInputStream
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.parsers.ParserConfigurationException
+import org.xml.sax.InputSource
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -57,16 +60,49 @@ object MusicXmlImporter {
             extractMxl(data)
         } else data
 
+        // Android's JAXP DocumentBuilderFactory always throws from
+        // setXIncludeAware(false), and Android does not support
+        // FEATURE_SECURE_PROCESSING on any API level. Guard the XML bytes
+        // FIRST, then use supported JAXP flags on each platform.
+        // A standard MusicXML PUBLIC doctype is allowed: the resolver
+        // substitutes an empty DTD so no external network I/O occurs.
+        val xmlForInspection = xmlData.toString(Charsets.UTF_8)
+        require(xmlData.size <= MAX_XML_BYTES) { "Partition XML trop volumineuse." }
+        require(!Regex("<!\\s*ENTITY\\b", RegexOption.IGNORE_CASE)
+            .containsMatchIn(xmlForInspection)) {
+            "Les entités XML personnalisées sont interdites pour des raisons de sécurité."
+        }
+        require(!Regex("<!DOCTYPE[^>]*\\[", setOf(
+            RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL,
+        )).containsMatchIn(xmlForInspection)) {
+            "Les sous-ensembles DTD internes ne sont pas autorisés."
+        }
         val factory = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = false
-            isXIncludeAware = false
+            isValidating = false
             setExpandEntityReferences(false)
-            setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-            setFeature("http://xml.org/sax/features/external-general-entities", false)
-            setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-            setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+            // Never call setXIncludeAware on Android (UnsupportedOperationException).
+            val protections = listOf(
+                XMLConstants.FEATURE_SECURE_PROCESSING,
+                "http://xml.org/sax/features/external-general-entities",
+                "http://xml.org/sax/features/external-parameter-entities",
+                "http://apache.org/xml/features/nonvalidating/load-external-dtd",
+            )
+            protections.forEachIndexed { index, feature ->
+                val enabled = index == 0
+                try {
+                    setFeature(feature, enabled)
+                } catch (_: ParserConfigurationException) {
+                    // Unsupported on Android; byte precheck and the entity
+                    // resolver below enforce the same no-external-entity rule.
+                } catch (_: UnsupportedOperationException) {
+                    // Android-specific JAXP implementations can throw here.
+                }
+            }
         }
-        val document = factory.newDocumentBuilder().parse(ByteArrayInputStream(xmlData))
+        val builder = factory.newDocumentBuilder()
+        builder.setEntityResolver { _, _ -> InputSource(StringReader("")) }
+        val document = builder.parse(ByteArrayInputStream(xmlData))
         val root = partwise(document.documentElement)
         require(root.tagName.substringAfter(':') == "score-partwise") {
             "Format MusicXML non pris en charge (score-partwise ou score-timewise attendu)."
